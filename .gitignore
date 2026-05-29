@@ -1,0 +1,7 @@
+*.log
+*.pem
+*.key
+*.crt
+*.kubeconfig
+.env
+secrets.yaml
