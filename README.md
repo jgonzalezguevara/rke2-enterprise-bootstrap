@@ -6,6 +6,17 @@ El objetivo de este proyecto es disponer de una estructura limpia, reproducible 
 
 Este repositorio no pretende ser un instalador cerrado, sino una base práctica para laboratorios, validaciones, automatización y despliegues reales inspirados en operación enterprise.
 
+## Documentación relacionada
+
+Más documentación técnica sobre Linux, Kubernetes, RKE2, automatización y operación enterprise en:
+
+https://desdeelservidor.es
+
+También puedes consultar la sección de proyectos:
+
+https://desdeelservidor.es/proyectos.html
+
+
 ---
 
 # Objetivos
