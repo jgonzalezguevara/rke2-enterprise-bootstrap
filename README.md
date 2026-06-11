@@ -1,14 +1,14 @@
 # RKE2 Enterprise Bootstrap
 
-Repositorio orientado a despliegues base de RKE2 en entornos enterprise y laboratorios avanzados.
+Repositorio orientado a despliegues base de RKE2 en entornos empresariales y laboratorios avanzados.
 
 El objetivo de este proyecto es disponer de una estructura limpia, reproducible y fácilmente automatizable para desplegar clústeres Kubernetes basados en RKE2 siguiendo buenas prácticas habituales en entornos productivos.
 
-Este repositorio no pretende ser un instalador cerrado, sino una base práctica para laboratorios, validaciones, automatización y despliegues reales inspirados en operación enterprise.
+Este repositorio no pretende ser un instalador cerrado, sino una base práctica para laboratorios, validaciones, automatización y despliegues reales inspirados en operación empresarial.
 
 ## Documentación relacionada
 
-Más documentación técnica sobre Linux, Kubernetes, RKE2, automatización y operación enterprise en:
+Más documentación técnica sobre Linux, Kubernetes, RKE2, automatización y operación empresarial en:
 
 https://desdeelservidor.es
 
@@ -23,7 +23,7 @@ https://desdeelservidor.es/proyectos.html
 
 * Simplificar despliegues iniciales de RKE2
 * Mantener configuraciones reproducibles
-* Facilitar troubleshooting y operaciones Day-2
+* Facilitar troubleshooting y operación Day-2
 * Servir como base para automatización futura
 * Centralizar ejemplos de configuración y validaciones
 * Mantener una estructura clara y reutilizable
@@ -94,7 +94,7 @@ rke2-enterprise-bootstrap/
   * GitOps
   * Fleet
   * Longhorn
-  * Monitoring
+  * Monitorización
   * CI/CD
 
 ---
@@ -195,5 +195,19 @@ No debe utilizarse directamente en producción sin revisión y adaptación previ
 Jose Gonzalez
 
 Linux Systems Engineer
-Kubernetes | Linux | RKE2 | Observability | Automation
+Kubernetes | Linux | RKE2 | Observabilidad | Automatización
 
+
+## Más recursos
+
+📚 Biblioteca Linux y DevOps  
+https://desdeelservidor.es/biblioteca-linux-devops.html
+
+👨‍💻 Sobre el autor  
+https://desdeelservidor.es/autor-jose-gonzalez.html
+
+🎓 Formación Linux y Troubleshooting  
+https://desdeelservidor.es/formacion.html
+
+📰 Newsletter Linux y Sistemas  
+https://desdeelservidor.es/newsletter.html
