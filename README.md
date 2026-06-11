@@ -194,7 +194,7 @@ No debe utilizarse directamente en producción sin revisión y adaptación previ
 
 Jose Gonzalez
 
-Linux Systems Engineer
+Systems Engineer Linux
 Kubernetes | Linux | RKE2 | Observabilidad | Automatización
 
 
