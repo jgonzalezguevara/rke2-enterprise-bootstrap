@@ -1,0 +1,107 @@
+---
+- name: Obtener nodos
+  ansible.builtin.command: /var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml get nodes -o wide
+  register: nodes
+  changed_when: false
+
+- name: Obtener pods
+  ansible.builtin.command: /var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml get pods -A -o wide
+  register: pods
+  changed_when: false
+
+- name: Crear carpeta de evidencias
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/../artifacts/validation/{{ environment_name }}"
+    state: directory
+  delegate_to: localhost
+  become: false
+
+- name: Guardar nodos
+  ansible.builtin.copy:
+    dest: "{{ playbook_dir }}/../artifacts/validation/{{ environment_name }}/nodes.txt"
+    content: "{{ nodes.stdout }}\n"
+  delegate_to: localhost
+  become: false
+
+- name: Guardar pods
+  ansible.builtin.copy:
+    dest: "{{ playbook_dir }}/../artifacts/validation/{{ environment_name }}/pods.txt"
+    content: "{{ pods.stdout }}\n"
+  delegate_to: localhost
+  become: false
+
+- name: Validar Rancher
+  ansible.builtin.uri:
+    url: "https://{{ rancher_hostname }}/ping"
+    validate_certs: false
+    status_code: 200
+  register: rancher_ping
+  retries: 30
+  delay: 10
+  until: rancher_ping.status == 200
+
+- name: Comprobar número total de nodos
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl \
+      --kubeconfig /etc/rancher/rke2/rke2.yaml \
+      get nodes --no-headers | wc -l
+  args:
+    executable: /bin/bash
+  register: detected_node_count
+  changed_when: false
+
+- name: Validar número esperado de nodos
+  ansible.builtin.assert:
+    that:
+      - detected_node_count.stdout | int == expected_cluster_nodes | int
+    fail_msg: >-
+      Se esperaban {{ expected_cluster_nodes }} nodos,
+      pero Kubernetes devuelve {{ detected_node_count.stdout }}.
+
+- name: Comprobar nodos Ready
+  ansible.builtin.shell: |
+    set -o pipefail
+    /var/lib/rancher/rke2/bin/kubectl \
+      --kubeconfig /etc/rancher/rke2/rke2.yaml \
+      get nodes --no-headers |
+    awk '$2=="Ready"{n++} END{print n+0}'
+  args:
+    executable: /bin/bash
+  register: ready_node_count
+  changed_when: false
+
+- name: Validar que todos los nodos están Ready
+  ansible.builtin.assert:
+    that:
+      - ready_node_count.stdout | int == expected_cluster_nodes | int
+    fail_msg: >-
+      Solo {{ ready_node_count.stdout }} de
+      {{ expected_cluster_nodes }} nodos están Ready.
+
+- name: Generar resumen de plataforma
+  ansible.builtin.copy:
+    dest: "{{ playbook_dir }}/../artifacts/validation/{{ environment_name }}/platform.txt"
+    content: |
+      Environment: {{ environment_name }}
+      Cluster: {{ cluster_name }}
+
+      Bootstrap node:
+        Host: {{ inventory_hostname }}
+        Distribution: {{ ansible_distribution | default('unknown') }}
+        Version: {{ ansible_distribution_version | default('unknown') }}
+        Architecture: {{ ansible_architecture | default('unknown') }}
+        Kernel: {{ ansible_kernel | default('unknown') }}
+
+      RKE2:
+        Version: {{ rke2_version }}
+        Servers expected: {{ expected_rke2_servers }}
+        Agents expected: {{ expected_rke2_agents }}
+        Nodes expected: {{ expected_cluster_nodes }}
+
+      Rancher:
+        Version: {{ rancher_version }}
+
+      cert-manager:
+        Version: {{ cert_manager_version }}
+  delegate_to: localhost
+  become: false

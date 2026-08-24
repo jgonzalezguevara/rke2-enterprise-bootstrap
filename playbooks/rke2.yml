@@ -1,0 +1,18 @@
+---
+- name: Instalar servidores RKE2 secuencialmente
+  hosts: rke2_servers
+  become: true
+  serial: 1
+  vars_files:
+    - "{{ inventory_dir }}/group_vars/vault.yml"
+  roles:
+    - rke2
+
+- name: Instalar agentes RKE2 secuencialmente
+  hosts: rke2_agents
+  become: true
+  serial: 1
+  vars_files:
+    - "{{ inventory_dir }}/group_vars/vault.yml"
+  roles:
+    - rke2

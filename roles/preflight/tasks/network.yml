@@ -1,0 +1,94 @@
+---
+- name: Detectar interfaz por defecto
+  ansible.builtin.set_fact:
+    preflight_default_interface: "{{ ansible_default_ipv4.interface | default('unknown') }}"
+    preflight_default_address: "{{ ansible_default_ipv4.address | default('unknown') }}"
+    preflight_default_gateway: "{{ ansible_default_ipv4.gateway | default('unknown') }}"
+    preflight_default_mtu: "{{ ansible_default_ipv4.mtu | default('unknown') }}"
+
+- name: Obtener rutas IPv4
+  ansible.builtin.command:
+    cmd: ip -4 route
+  register: preflight_routes
+  changed_when: false
+  failed_when: false
+
+- name: Resolver endpoint API RKE2
+  ansible.builtin.command:
+    cmd: "getent ahostsv4 {{ rke2_api_hostname }}"
+  register: preflight_api_dns
+  changed_when: false
+  failed_when: false
+
+- name: Resolver hostname Rancher
+  ansible.builtin.command:
+    cmd: "getent ahostsv4 {{ rancher_hostname }}"
+  register: preflight_rancher_dns
+  changed_when: false
+  failed_when: false
+
+- name: Comprobar conectividad ICMP entre nodos
+  ansible.builtin.command:
+    cmd: "ping -c 1 -W 2 {{ hostvars[item].ansible_host }}"
+  loop: "{{ groups['rke2_cluster'] | difference([inventory_hostname]) }}"
+  register: preflight_inter_node_ping
+  changed_when: false
+  failed_when: false
+
+- name: Evaluar conectividad entre nodos
+  ansible.builtin.set_fact:
+    preflight_unreachable_nodes: >-
+      {{
+        preflight_inter_node_ping.results
+        | selectattr('rc', 'ne', 0)
+        | map(attribute='item')
+        | list
+      }}
+
+- name: Comprobar conflictos entre redes locales y CIDR Kubernetes
+  ansible.builtin.shell: |
+    python3 - <<'PY'
+    import ipaddress
+    import subprocess
+
+    pod = ipaddress.ip_network("{{ rke2_cluster_cidr }}")
+    svc = ipaddress.ip_network("{{ rke2_service_cidr }}")
+
+    output = subprocess.check_output(
+        ["ip", "-4", "route"],
+        text=True
+    )
+
+    conflicts = []
+
+    for line in output.splitlines():
+        first = line.split()[0]
+
+        if first == "default":
+            continue
+
+        try:
+            net = ipaddress.ip_network(first, strict=False)
+        except ValueError:
+            continue
+
+        if net.overlaps(pod):
+            conflicts.append(
+                f"{net} overlaps pod CIDR {pod}"
+            )
+
+        if net.overlaps(svc):
+            conflicts.append(
+                f"{net} overlaps service CIDR {svc}"
+            )
+
+    for conflict in conflicts:
+        print(conflict)
+
+    raise SystemExit(1 if conflicts else 0)
+    PY
+  args:
+    executable: /bin/bash
+  register: preflight_cidr_conflicts
+  changed_when: false
+  failed_when: false

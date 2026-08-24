@@ -1,0 +1,9 @@
+---
+- name: Preflight de nodos RKE2
+  hosts: rke2_cluster
+  become: true
+  gather_facts: true
+  vars_files:
+    - "{{ inventory_dir }}/group_vars/vault.yml"
+  roles:
+    - preflight

@@ -1,213 +1,263 @@
 # RKE2 Enterprise Bootstrap
 
-Repositorio orientado a despliegues base de RKE2 en entornos empresariales y laboratorios avanzados.
+Automatización reproducible para validar, preparar y desplegar clústeres RKE2 con Rancher sobre infraestructura Linux compatible.
 
-El objetivo de este proyecto es disponer de una estructura limpia, reproducible y fácilmente automatizable para desplegar clústeres Kubernetes basados en RKE2 siguiendo buenas prácticas habituales en entornos productivos.
+El proyecto está diseñado para partir de hosts existentes sin asumir una distribución Linux concreta. Antes de realizar cambios, ejecuta un preflight que descubre las capacidades de cada nodo, comprueba requisitos técnicos, analiza red y estado previo y genera un informe de compatibilidad.
 
-Este repositorio no pretende ser un instalador cerrado, sino una base práctica para laboratorios, validaciones, automatización y despliegues reales inspirados en operación empresarial.
+## Objetivo
 
-## Documentación relacionada
+Convertir el despliegue inicial de una plataforma RKE2 en un proceso:
 
-Más documentación técnica sobre Linux, Kubernetes, RKE2, automatización y operación empresarial en:
+- reproducible;
+- parametrizable;
+- validable;
+- auditable;
+- independiente de una distribución Linux concreta;
+- preparado para crecer hacia operación Day-2.
 
-https://desdeelservidor.es
+La herramienta no necesita saber previamente si los hosts utilizan Ubuntu, SLES, Debian, Rocky Linux u otra distribución.
 
-También puedes consultar la sección de proyectos:
+Comprueba qué capacidades proporciona realmente cada sistema y determina si cumple los requisitos necesarios para RKE2.
 
-https://desdeelservidor.es/proyectos.html
+## Flujo
 
+```text
+CREATE ENVIRONMENT
+        |
+        v
+VALIDATE
+        |
+        v
+PREFLIGHT
+  |
+  +-- host discovery
+  +-- network discovery
+  +-- host state
+  +-- online connectivity
+  +-- evaluation
+  +-- report
+  +-- enforcement
+        |
+        v
+OS PREPARATION
+        |
+        v
+RKE2 SERVERS
+        |
+        v
+RKE2 AGENTS
+        |
+        v
+CERT-MANAGER
+        |
+        v
+RANCHER
+        |
+        v
+VALIDATION
+```
 
----
+## Características actuales
 
-# Objetivos
+### Topología dinámica
 
-* Simplificar despliegues iniciales de RKE2
-* Mantener configuraciones reproducibles
-* Facilitar troubleshooting y operación Day-2
-* Servir como base para automatización futura
-* Centralizar ejemplos de configuración y validaciones
-* Mantener una estructura clara y reutilizable
+El asistente permite definir:
 
----
+- número de nodos RKE2 Server;
+- número de nodos RKE2 Agent;
+- endpoint estable para RKE2;
+- VIP o dirección del balanceador;
+- redes de pods y servicios;
+- DNS interno de Kubernetes;
+- versiones de RKE2, Rancher y cert-manager.
 
-# Tecnologías
+Para topologías HA con etcd embebido se exige un mínimo de tres servers y un número impar de miembros.
 
-* RKE2
-* Kubernetes
-* Linux
-* systemd
-* HA
-* Networking
-* Shell scripting
+### Preflight basado en capacidades
 
----
+Antes del despliegue se comprueban, entre otros:
 
-# Estructura del proyecto
+- sistema Linux;
+- arquitectura;
+- CPU y memoria;
+- systemd;
+- cgroups;
+- módulos overlay y br_netfilter;
+- swap;
+- espacio disponible;
+- DNS;
+- interfaz, gateway y MTU;
+- conectividad entre nodos;
+- conflictos con los CIDR de Kubernetes;
+- puertos utilizados por RKE2;
+- instalaciones RKE2 previas;
+- firewall;
+- SELinux;
+- AppArmor;
+- proxy;
+- Docker y containerd existentes;
+- acceso al instalador RKE2;
+- acceso a los repositorios Helm necesarios.
+
+Los checks se clasifican como PASS, WARN o FAIL.
+
+El informe se muestra antes de bloquear una instalación incompatible.
+
+### Seguridad de configuración
+
+Los entornos reales se generan localmente dentro de:
+
+```text
+inventories/<environment>/
+```
+
+y están excluidos de Git.
+
+Las credenciales se almacenan en un fichero protegido mediante Ansible Vault.
+
+El repositorio público contiene únicamente:
+
+```text
+inventories/example/
+```
+
+con nombres y direcciones reservados para documentación.
+
+### Instalación
+
+El proceso instala y configura:
+
+- RKE2 Server;
+- RKE2 Agent;
+- etcd embebido en topologías HA;
+- Helm;
+- cert-manager;
+- SUSE Rancher.
+
+Los nodos se incorporan secuencialmente al clúster.
+
+## Uso
+
+Crear un entorno:
 
 ```bash
+./rke2-deploy create
+```
+
+Validar su configuración:
+
+```bash
+./rke2-deploy validate ENVIRONMENT
+```
+
+Comprobar conectividad Ansible:
+
+```bash
+./rke2-deploy ping ENVIRONMENT
+```
+
+Ejecutar el preflight:
+
+```bash
+./rke2-deploy preflight ENVIRONMENT
+```
+
+Mostrar el inventario:
+
+```bash
+./rke2-deploy inventory ENVIRONMENT
+```
+
+Desplegar:
+
+```bash
+./rke2-deploy install ENVIRONMENT
+```
+
+Listar entornos:
+
+```bash
+./rke2-deploy list
+```
+
+## Requisitos del nodo de control
+
+- Linux.
+- Ansible.
+- Python 3.
+- OpenSSH client.
+- OpenSSL.
+- Acceso SSH a los hosts destino.
+
+Instala las colecciones de Ansible requeridas con:
+
+```bash
+ansible-galaxy collection install -r requirements.yml
+```
+
+## Arquitectura
+
+Consulta:
+
+- docs/arquitectura.md
+- docs/puertos.md
+- docs/operacion.md
+
+## Estructura principal
+
+```text
 rke2-enterprise-bootstrap/
-├── README.md
-├── scripts/
-│   ├── install-server.sh
-│   ├── install-agent.sh
-│   ├── health-check.sh
-│   ├── cleanup.sh
-│
-├── configs/
-│   ├── config-server.yaml
-│   ├── config-agent.yaml
-│
-├── docs/
-│   ├── architecture.md
-│   ├── troubleshooting.md
-│   ├── day2-operations.md
-│
-├── manifests/
-│   ├── example-nginx.yaml
-│
-├── .gitignore
+|-- bootstrap/
+|-- docs/
+|-- inventories/
+|   `-- example/
+|-- playbooks/
+|-- roles/
+|   |-- os_prepare/
+|   |-- preflight/
+|   |-- rancher/
+|   |-- rke2/
+|   `-- validation/
+|-- artifacts/
+|-- rke2-deploy
+|-- site.yml
+|-- requirements.yml
+`-- ansible.cfg
 ```
 
----
+## Roadmap
 
-# Características
+Capacidades previstas:
 
-* Instalación automatizada de nodos server y agent
-* Ejemplos de configuración hardened
-* Ejemplos de TLS SAN
-* Configuración base enterprise-oriented
-* Validaciones básicas de salud del clúster
-* Scripts reutilizables
-* Estructura preparada para automatización
+- validación avanzada de networking y puertos;
+- instalación air-gap;
+- private registries;
+- backup y restore de etcd;
+- upgrades controlados de RKE2;
+- upgrades de Rancher;
+- hardening;
+- almacenamiento;
+- observabilidad;
+- reporting;
+- validaciones Day-2;
+- GitOps y Fleet.
 
----
+## Estado
 
-# Escenarios previstos
+PoC funcional en desarrollo activo.
 
-* Laboratorios Kubernetes
-* Entornos de pruebas
-* Aprendizaje avanzado
-* Bases para automatización
-* Integración futura con:
+No debe utilizarse directamente en producción sin revisar previamente requisitos, versiones soportadas, networking, seguridad, almacenamiento y políticas específicas del entorno.
 
-  * Rancher
-  * GitOps
-  * Fleet
-  * Longhorn
-  * Monitorización
-  * CI/CD
-
----
-
-# Ejemplo de instalación server
-
-```bash
-curl -sfL https://get.rke2.io | sh -
-
-mkdir -p /etc/rancher/rke2/
-
-cp configs/config-server.yaml /etc/rancher/rke2/config.yaml
-
-systemctl enable rke2-server.service
-systemctl start rke2-server.service
-```
-
----
-
-# Ejemplo de instalación agent
-
-```bash
-curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE="agent" sh -
-
-mkdir -p /etc/rancher/rke2/
-
-cp configs/config-agent.yaml /etc/rancher/rke2/config.yaml
-
-systemctl enable rke2-agent.service
-systemctl start rke2-agent.service
-```
-
----
-
-# Validaciones básicas
-
-```bash
-kubectl get nodes -o wide
-
-kubectl get pods -A
-
-systemctl status rke2-server
-
-journalctl -u rke2-server -f
-```
-
----
-
-# Troubleshooting habitual
-
-Algunos problemas típicos que suelen revisarse:
-
-* problemas de etcd
-* errores de networking
-* TLS SAN incorrectos
-* problemas de conectividad entre nodos
-* errores de CNI
-* conflictos firewall
-* certificados expirados
-* nodos NotReady
-
-La documentación de troubleshooting irá ampliándose progresivamente.
-
----
-
-# Roadmap
-
-Pendiente de incorporar:
-
-* HA con VIP
-* integración Rancher
-* ejemplos con Longhorn
-* ejemplos GitOps
-* ejemplos Fleet
-* hardening adicional
-* integración observabilidad
-* integración con Terraform
-* integración con Proxmox
-* soporte edge/labs
-
----
-
-# Importante
-
-Este repositorio está orientado a:
-
-* laboratorio
-* aprendizaje
-* automatización
-* despliegues de referencia
-
-No debe utilizarse directamente en producción sin revisión y adaptación previa a los requisitos de cada entorno.
-
----
-
-# Autor
+## Autor
 
 Jose Gonzalez
 
-Systems Engineer Linux
-Kubernetes | Linux | RKE2 | Observabilidad | Automatización
+Systems & Platform Engineer
 
+Linux · Kubernetes · RKE2 · SUSE · Automation
 
-## Más recursos
+Más contenido técnico:
 
-📚 Biblioteca Linux y DevOps  
-https://desdeelservidor.es/biblioteca-linux-devops.html
-
-👨‍💻 Sobre el autor  
-https://desdeelservidor.es/autor-jose-gonzalez.html
-
-🎓 Formación Linux y Troubleshooting  
-https://desdeelservidor.es/formacion.html
-
-📰 Newsletter Linux y Sistemas  
-https://desdeelservidor.es/newsletter.html
+- https://desdeelservidor.es
+- https://desdeelservidor.es/proyectos.html
+- https://github.com/jgonzalezguevara

@@ -1,0 +1,10 @@
+---
+- name: Bloquear hosts incompatibles
+  ansible.builtin.assert:
+    that:
+      - preflight_failed_checks | length == 0
+    success_msg: >-
+      Host {{ inventory_hostname }} compatible con el bootstrap RKE2.
+    fail_msg: >-
+      Host {{ inventory_hostname }} incompatible con el bootstrap RKE2.
+      Checks fallidos: {{ preflight_failed_checks | join(', ') }}

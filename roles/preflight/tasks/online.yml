@@ -1,0 +1,45 @@
+---
+- name: Comprobar acceso al instalador RKE2
+  ansible.builtin.uri:
+    url: https://get.rke2.io
+    method: HEAD
+    follow_redirects: all
+    return_content: false
+    timeout: 10
+    status_code:
+      - 200
+      - 301
+      - 302
+  register: preflight_rke2_download
+  changed_when: false
+  failed_when: false
+
+- name: Comprobar acceso al repositorio Helm de Rancher
+  ansible.builtin.uri:
+    url: https://releases.rancher.com/server-charts/stable/index.yaml
+    method: HEAD
+    follow_redirects: all
+    return_content: false
+    timeout: 10
+    status_code:
+      - 200
+      - 301
+      - 302
+  register: preflight_rancher_repository
+  changed_when: false
+  failed_when: false
+
+- name: Comprobar acceso al repositorio Helm de cert-manager
+  ansible.builtin.uri:
+    url: https://charts.jetstack.io/index.yaml
+    method: HEAD
+    follow_redirects: all
+    return_content: false
+    timeout: 10
+    status_code:
+      - 200
+      - 301
+      - 302
+  register: preflight_certmanager_repository
+  changed_when: false
+  failed_when: false

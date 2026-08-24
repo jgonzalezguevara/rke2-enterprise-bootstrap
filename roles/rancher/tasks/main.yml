@@ -1,0 +1,51 @@
+---
+- name: Esperar todos los nodos RKE2 Ready
+  ansible.builtin.shell: |
+    set -o pipefail
+    /var/lib/rancher/rke2/bin/kubectl       --kubeconfig /etc/rancher/rke2/rke2.yaml       get nodes --no-headers |
+    awk -v expected="{{ expected_cluster_nodes }}"       '$2=="Ready"{n++} END{exit !(n==expected)}'
+  args:
+    executable: /bin/bash
+  register: ready_nodes
+  retries: 60
+  delay: 10
+  until: ready_nodes.rc == 0
+  changed_when: false
+
+- name: Instalar Helm
+  ansible.builtin.shell: curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  args:
+    creates: /usr/local/bin/helm
+
+- name: Configurar repositorios Helm
+  ansible.builtin.shell: |
+    helm repo add jetstack https://charts.jetstack.io --force-update
+    helm repo add rancher-stable https://releases.rancher.com/server-charts/stable --force-update
+    helm repo update
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  changed_when: true
+
+- name: Instalar cert-manager
+  ansible.builtin.command: >-
+    helm upgrade --install cert-manager jetstack/cert-manager
+    --namespace cert-manager --create-namespace
+    --version {{ cert_manager_version }}
+    --set crds.enabled=true
+    --wait --timeout 10m
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
+- name: Instalar Rancher
+  ansible.builtin.command: >-
+    helm upgrade --install rancher rancher-stable/rancher
+    --namespace cattle-system --create-namespace
+    --version {{ rancher_version }}
+    --set hostname={{ rancher_hostname }}
+    --set replicas={{ rancher_replicas }}
+    --set bootstrapPassword={{ vault_rancher_bootstrap_password }}
+    --set ingress.tls.source={{ rancher_tls_source }}
+    --wait --timeout 15m
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  no_log: true

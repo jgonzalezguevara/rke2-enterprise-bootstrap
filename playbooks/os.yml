@@ -1,0 +1,7 @@
+---
+- name: Preparar hosts para RKE2
+  hosts: rke2_cluster
+  become: true
+  gather_facts: true
+  roles:
+    - os_prepare

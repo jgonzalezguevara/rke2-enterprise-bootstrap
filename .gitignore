@@ -1,7 +1,17 @@
-*.log
-*.pem
+*.retry
+*.bak
+.ansible/
+.venv/
+artifacts/kubeconfig/*
+!artifacts/kubeconfig/.gitkeep
+artifacts/logs/*
+!artifacts/logs/.gitkeep
+artifacts/validation/*
+!artifacts/validation/.gitkeep
 *.key
-*.crt
-*.kubeconfig
-.env
-secrets.yaml
+*.pem
+
+# Runtime inventories generated for real environments
+inventories/*
+!inventories/example/
+!inventories/example/**

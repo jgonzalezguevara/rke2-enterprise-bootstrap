@@ -1,0 +1,59 @@
+---
+- name: Detectar plataforma
+  ansible.builtin.set_fact:
+    preflight_system: "{{ ansible_system | default('unknown') }}"
+    preflight_distribution: "{{ ansible_distribution | default('unknown') }}"
+    preflight_distribution_version: "{{ ansible_distribution_version | default('unknown') }}"
+    preflight_os_family: "{{ ansible_os_family | default('unknown') }}"
+    preflight_architecture: "{{ ansible_architecture | default('unknown') }}"
+    preflight_kernel: "{{ ansible_kernel | default('unknown') }}"
+    preflight_package_manager: "{{ ansible_pkg_mgr | default('unknown') }}"
+    preflight_cpu_vcpus: "{{ ansible_processor_vcpus | default(0) | int }}"
+    preflight_memory_mb: "{{ ansible_memtotal_mb | default(0) | int }}"
+    preflight_swap_mb: "{{ ansible_swaptotal_mb | default(0) | int }}"
+
+- name: Detectar systemd
+  ansible.builtin.command:
+    cmd: systemctl --version
+  register: preflight_systemd
+  changed_when: false
+  failed_when: false
+
+- name: Detectar cgroups
+  ansible.builtin.stat:
+    path: /sys/fs/cgroup
+  register: preflight_cgroups
+
+- name: Detectar overlay
+  ansible.builtin.command:
+    cmd: modprobe -n overlay
+  register: preflight_overlay
+  changed_when: false
+  failed_when: false
+
+- name: Detectar br_netfilter
+  ansible.builtin.command:
+    cmd: modprobe -n br_netfilter
+  register: preflight_br_netfilter
+  changed_when: false
+  failed_when: false
+
+- name: Detectar datastore RKE2 previo
+  ansible.builtin.stat:
+    path: /var/lib/rancher/rke2/server/db/etcd
+  register: preflight_previous_rke2
+
+- name: Detectar espacio libre en /
+  ansible.builtin.shell: |
+    df -Pm / | awk 'NR==2 {print $4}'
+  args:
+    executable: /bin/sh
+  register: preflight_root_free_mb
+  changed_when: false
+
+- name: Detectar resolución DNS local
+  ansible.builtin.command:
+    cmd: getent hosts localhost
+  register: preflight_dns_local
+  changed_when: false
+  failed_when: false

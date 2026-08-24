@@ -1,0 +1,4 @@
+server: "https://{{ rke2_api_hostname }}:9345"
+token: "{{ vault_rke2_token }}"
+node-name: "{{ inventory_hostname }}"
+node-ip: "{{ ansible_host }}"

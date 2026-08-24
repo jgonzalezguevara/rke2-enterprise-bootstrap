@@ -1,0 +1,10 @@
+---
+- name: Instalar Rancher desde el primer master
+  hosts: rke2_servers
+  become: true
+  gather_facts: false
+  vars_files:
+    - "{{ inventory_dir }}/group_vars/vault.yml"
+  roles:
+    - role: rancher
+      when: rke2_first_server | default(false) | bool

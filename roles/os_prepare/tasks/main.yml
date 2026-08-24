@@ -1,0 +1,58 @@
+---
+- name: Detectar herramientas requeridas
+  ansible.builtin.shell: |
+    command -v curl || true
+  args:
+    executable: /bin/sh
+  register: curl_path
+  changed_when: false
+
+- name: Instalar curl mediante gestor de paquetes detectado
+  ansible.builtin.package:
+    name: curl
+    state: present
+  when: curl_path.stdout | length == 0
+
+- name: Desactivar swap activa
+  ansible.builtin.command:
+    cmd: swapoff -a
+  when: ansible_swaptotal_mb | int > 0
+  changed_when: true
+
+- name: Detectar fstab
+  ansible.builtin.stat:
+    path: /etc/fstab
+  register: fstab_file
+
+- name: Desactivar swap persistente en fstab
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^(?!#)(.*\sswap\s.*)$'
+    replace: '# \1'
+  when: fstab_file.stat.exists
+
+- name: Configurar módulos requeridos
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/rke2.conf
+    mode: "0644"
+    content: |
+      overlay
+      br_netfilter
+
+- name: Cargar módulos del kernel
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter
+
+- name: Configurar parámetros de red del kernel
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/90-rke2.conf
+    mode: "0644"
+    content: |
+      net.bridge.bridge-nf-call-iptables = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward = 1
+  notify: Aplicar sysctl

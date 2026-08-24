@@ -1,0 +1,56 @@
+---
+- name: Crear directorio RKE2
+  ansible.builtin.file:
+    path: /etc/rancher/rke2
+    state: directory
+    mode: "0755"
+
+- name: Configurar server
+  ansible.builtin.template:
+    src: server-config.yaml.j2
+    dest: /etc/rancher/rke2/config.yaml
+    mode: "0600"
+  when: inventory_hostname in groups['rke2_servers']
+
+- name: Configurar agent
+  ansible.builtin.template:
+    src: agent-config.yaml.j2
+    dest: /etc/rancher/rke2/config.yaml
+    mode: "0600"
+  when: inventory_hostname in groups['rke2_agents']
+
+- name: Descargar instalador
+  ansible.builtin.get_url:
+    url: https://get.rke2.io
+    dest: /tmp/install-rke2.sh
+    mode: "0755"
+
+- name: Instalar server
+  ansible.builtin.command: /tmp/install-rke2.sh
+  environment:
+    INSTALL_RKE2_VERSION: "{{ rke2_version }}"
+    INSTALL_RKE2_TYPE: server
+  args:
+    creates: /usr/local/bin/rke2
+  when: inventory_hostname in groups['rke2_servers']
+
+- name: Instalar agent
+  ansible.builtin.command: /tmp/install-rke2.sh
+  environment:
+    INSTALL_RKE2_VERSION: "{{ rke2_version }}"
+    INSTALL_RKE2_TYPE: agent
+  args:
+    creates: /usr/local/bin/rke2
+  when: inventory_hostname in groups['rke2_agents']
+
+- name: Arrancar RKE2
+  ansible.builtin.systemd:
+    name: "{{ 'rke2-server' if inventory_hostname in groups['rke2_servers'] else 'rke2-agent' }}"
+    enabled: true
+    state: started
+
+- name: Esperar API en masters
+  ansible.builtin.wait_for:
+    port: 6443
+    timeout: 600
+  when: inventory_hostname in groups['rke2_servers']

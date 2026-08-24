@@ -1,0 +1,21 @@
+---
+- name: Descubrir capacidades del host
+  ansible.builtin.import_tasks: discover.yml
+
+- name: Descubrir red y conectividad
+  ansible.builtin.import_tasks: network.yml
+
+- name: Descubrir estado previo y conflictos
+  ansible.builtin.import_tasks: state.yml
+
+- name: Validar conectividad de instalación online
+  ansible.builtin.import_tasks: online.yml
+
+- name: Evaluar compatibilidad RKE2
+  ansible.builtin.import_tasks: evaluate.yml
+
+- name: Generar informe preflight
+  ansible.builtin.import_tasks: report.yml
+
+- name: Aplicar resultado del preflight
+  ansible.builtin.import_tasks: enforce.yml

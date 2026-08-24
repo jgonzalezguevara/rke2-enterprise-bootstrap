@@ -1,0 +1,146 @@
+---
+- name: Definir puertos que deben estar libres
+  ansible.builtin.set_fact:
+    preflight_required_free_ports: >-
+      {{
+        [6443, 9345, 2379, 2380, 10250]
+        if inventory_hostname in groups['rke2_servers']
+        else [10250]
+      }}
+
+- name: Detectar sockets TCP en escucha
+  ansible.builtin.shell: |
+    if command -v ss >/dev/null 2>&1; then
+      ss -H -lnt
+    elif command -v netstat >/dev/null 2>&1; then
+      netstat -lnt
+    else
+      exit 127
+    fi
+  args:
+    executable: /bin/sh
+  register: preflight_listening_tcp
+  changed_when: false
+  failed_when: false
+
+- name: Detectar puertos RKE2 ocupados
+  ansible.builtin.shell: |
+    if command -v ss >/dev/null 2>&1; then
+      ss -H -lnt | awk '{print $4}' | grep -Eq '[:.]{{ item }}$'
+    elif command -v netstat >/dev/null 2>&1; then
+      netstat -lnt | awk 'NR>2 {print $4}' | grep -Eq '[:.]{{ item }}$'
+    else
+      exit 2
+    fi
+  args:
+    executable: /bin/sh
+  loop: "{{ preflight_required_free_ports }}"
+  register: preflight_port_checks
+  changed_when: false
+  failed_when: false
+
+- name: Construir lista de puertos ocupados
+  ansible.builtin.set_fact:
+    preflight_occupied_ports: >-
+      {{
+        preflight_port_checks.results
+        | selectattr('rc', 'equalto', 0)
+        | map(attribute='item')
+        | list
+      }}
+
+- name: Detectar servicios RKE2 existentes
+  ansible.builtin.shell: |
+    for service in rke2-server rke2-agent kubelet; do
+      if systemctl list-unit-files "${service}.service" \
+        --no-legend 2>/dev/null | grep -q "^${service}.service"; then
+        echo "$service"
+      fi
+    done
+  args:
+    executable: /bin/bash
+  register: preflight_existing_services
+  changed_when: false
+  failed_when: false
+
+- name: Detectar runtime Docker
+  ansible.builtin.command:
+    cmd: docker info
+  register: preflight_docker
+  changed_when: false
+  failed_when: false
+
+- name: Detectar runtime containerd
+  ansible.builtin.command:
+    cmd: containerd --version
+  register: preflight_containerd
+  changed_when: false
+  failed_when: false
+
+- name: Detectar UFW
+  ansible.builtin.shell: |
+    if command -v ufw >/dev/null 2>&1; then
+      ufw status 2>/dev/null | head -1
+    fi
+  args:
+    executable: /bin/sh
+  register: preflight_ufw
+  changed_when: false
+  failed_when: false
+
+- name: Detectar firewalld
+  ansible.builtin.shell: |
+    if command -v firewall-cmd >/dev/null 2>&1; then
+      firewall-cmd --state 2>/dev/null
+    fi
+  args:
+    executable: /bin/sh
+  register: preflight_firewalld
+  changed_when: false
+  failed_when: false
+
+- name: Detectar SELinux
+  ansible.builtin.shell: |
+    if command -v getenforce >/dev/null 2>&1; then
+      getenforce
+    else
+      echo "not-detected"
+    fi
+  args:
+    executable: /bin/sh
+  register: preflight_selinux
+  changed_when: false
+  failed_when: false
+
+- name: Detectar AppArmor
+  ansible.builtin.shell: |
+    if command -v aa-status >/dev/null 2>&1; then
+      if aa-status --enabled >/dev/null 2>&1; then
+        echo "enabled"
+      else
+        echo "disabled"
+      fi
+    else
+      echo "not-detected"
+    fi
+  args:
+    executable: /bin/sh
+  register: preflight_apparmor
+  changed_when: false
+  failed_when: false
+
+- name: Detectar configuración proxy
+  ansible.builtin.set_fact:
+    preflight_proxy_variables:
+      http_proxy: "{{ ansible_env.http_proxy | default(ansible_env.HTTP_PROXY | default('')) }}"
+      https_proxy: "{{ ansible_env.https_proxy | default(ansible_env.HTTPS_PROXY | default('')) }}"
+      no_proxy: "{{ ansible_env.no_proxy | default(ansible_env.NO_PROXY | default('')) }}"
+
+- name: Determinar si existe proxy configurado
+  ansible.builtin.set_fact:
+    preflight_proxy_configured: >-
+      {{
+        (preflight_proxy_variables.http_proxy | length > 0)
+        or
+        (preflight_proxy_variables.https_proxy | length > 0)
+      }}

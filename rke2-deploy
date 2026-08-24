@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cmd="${1:-help}"
+env="${2:-}"
+
+need_env() {
+  [[ -n "$env" ]] || { echo "ERROR: indica ENTORNO" >&2; exit 1; }
+  [[ -f "$ROOT/inventories/$env/hosts.yml" ]] || { echo "ERROR: no existe el entorno $env" >&2; exit 1; }
+}
+
+case "$cmd" in
+  create) exec "$ROOT/bootstrap/create-environment.sh" ;;
+  validate) need_env; exec "$ROOT/bootstrap/validate-environment.sh" "$env" ;;
+  ping) need_env; exec ansible -i "$ROOT/inventories/$env/hosts.yml" rke2_cluster -m ansible.builtin.ping ;;
+  preflight) need_env; exec ansible-playbook -i "$ROOT/inventories/$env/hosts.yml" "$ROOT/playbooks/preflight.yml" --ask-vault-pass ;;
+  install) need_env; exec "$ROOT/bootstrap/deploy.sh" "$env" ;;
+  inventory) need_env; exec ansible-inventory -i "$ROOT/inventories/$env/hosts.yml" --graph ;;
+  list) find "$ROOT/inventories" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort ;;
+  version) echo "RKE2 Deployment Assistant 1.0.0" ;;
+  *)
+    cat <<'EOF'
+Uso:
+  ./rke2-deploy create
+  ./rke2-deploy validate ENTORNO
+  ./rke2-deploy ping ENTORNO
+  ./rke2-deploy preflight ENTORNO
+  ./rke2-deploy install ENTORNO
+  ./rke2-deploy inventory ENTORNO
+  ./rke2-deploy list
+EOF
+    ;;
+esac

@@ -1,0 +1,8 @@
+---
+- name: Validación final
+  hosts: rke2_servers
+  become: true
+  gather_facts: false
+  roles:
+    - role: validation
+      when: rke2_first_server | default(false) | bool

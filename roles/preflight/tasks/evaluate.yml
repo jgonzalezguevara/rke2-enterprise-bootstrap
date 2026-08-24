@@ -1,0 +1,200 @@
+---
+- name: Evaluar checks preflight
+  ansible.builtin.set_fact:
+    preflight_checks:
+      linux:
+        status: "{{ 'PASS' if preflight_system == 'Linux' else 'FAIL' }}"
+        detail: "{{ preflight_system }}"
+
+      architecture:
+        status: "{{ 'PASS' if preflight_architecture in ['x86_64', 'aarch64', 'arm64'] else 'FAIL' }}"
+        detail: "{{ preflight_architecture }}"
+
+      systemd:
+        status: "{{ 'PASS' if preflight_systemd.rc == 0 else 'FAIL' }}"
+        detail: "{{ 'detected' if preflight_systemd.rc == 0 else 'not detected' }}"
+
+      cgroups:
+        status: "{{ 'PASS' if preflight_cgroups.stat.exists else 'FAIL' }}"
+        detail: "{{ '/sys/fs/cgroup present' if preflight_cgroups.stat.exists else 'missing' }}"
+
+      overlay:
+        status: "{{ 'PASS' if preflight_overlay.rc == 0 else 'FAIL' }}"
+        detail: "{{ 'available' if preflight_overlay.rc == 0 else 'not available' }}"
+
+      br_netfilter:
+        status: "{{ 'PASS' if preflight_br_netfilter.rc == 0 else 'FAIL' }}"
+        detail: "{{ 'available' if preflight_br_netfilter.rc == 0 else 'not available' }}"
+
+      cpu:
+        status: "{{ 'PASS' if preflight_cpu_vcpus | int >= minimum_vcpus | int else 'FAIL' }}"
+        detail: "{{ preflight_cpu_vcpus }} vCPU"
+
+      memory:
+        status: "{{ 'PASS' if preflight_memory_mb | int >= minimum_memory_mb | int else 'FAIL' }}"
+        detail: "{{ preflight_memory_mb }} MB"
+
+      swap:
+        status: "{{ 'PASS' if preflight_swap_mb | int == 0 else 'WARN' }}"
+        detail: "{{ preflight_swap_mb }} MB"
+
+      previous_rke2:
+        status: "{{ 'FAIL' if preflight_previous_rke2.stat.exists else 'PASS' }}"
+        detail: "{{ 'existing datastore detected' if preflight_previous_rke2.stat.exists else 'clean host' }}"
+
+      root_space:
+        status: "{{ 'PASS' if preflight_root_free_mb.stdout | int >= 10240 else 'WARN' }}"
+        detail: "{{ preflight_root_free_mb.stdout }} MB free"
+
+      dns:
+        status: "{{ 'PASS' if preflight_dns_local.rc == 0 else 'WARN' }}"
+        detail: "{{ 'resolver available' if preflight_dns_local.rc == 0 else 'resolver check failed' }}"
+
+- name: Añadir evaluación de red
+  ansible.builtin.set_fact:
+    preflight_checks: >-
+      {{
+        preflight_checks
+        | combine({
+            'api_dns': {
+              'status': 'PASS' if preflight_api_dns.rc == 0 else 'WARN',
+              'detail': 'resolved' if preflight_api_dns.rc == 0 else 'not resolved'
+            },
+            'rancher_dns': {
+              'status': 'PASS' if preflight_rancher_dns.rc == 0 else 'WARN',
+              'detail': 'resolved' if preflight_rancher_dns.rc == 0 else 'not resolved'
+            },
+            'inter_node': {
+              'status': 'PASS' if preflight_unreachable_nodes | length == 0 else 'FAIL',
+              'detail': (
+                'all nodes reachable'
+                if preflight_unreachable_nodes | length == 0
+                else 'unreachable: ' ~ (preflight_unreachable_nodes | join(', '))
+              )
+            },
+            'cidr_conflicts': {
+              'status': 'PASS' if preflight_cidr_conflicts.rc == 0 else 'FAIL',
+              'detail': (
+                'no conflicts detected'
+                if preflight_cidr_conflicts.rc == 0
+                else preflight_cidr_conflicts.stdout
+              )
+            }
+          }, recursive=True)
+      }}
+
+- name: Añadir evaluación de estado del host
+  ansible.builtin.set_fact:
+    preflight_checks: >-
+      {{
+        preflight_checks
+        | combine({
+            'occupied_ports': {
+              'status': (
+                'PASS'
+                if preflight_occupied_ports | length == 0
+                else 'FAIL'
+              ),
+              'detail': (
+                'required ports are free'
+                if preflight_occupied_ports | length == 0
+                else 'occupied: ' ~ (
+                  preflight_occupied_ports
+                  | map('string')
+                  | join(', ')
+                )
+              )
+            },
+            'existing_services': {
+              'status': (
+                'PASS'
+                if preflight_existing_services.stdout_lines | length == 0
+                else 'FAIL'
+              ),
+              'detail': (
+                'no existing RKE2/Kubernetes services'
+                if preflight_existing_services.stdout_lines | length == 0
+                else preflight_existing_services.stdout_lines | join(', ')
+              )
+            },
+            'firewall': {
+              'status': (
+                'WARN'
+                if (
+                  'Status: active' in preflight_ufw.stdout
+                  or preflight_firewalld.stdout | trim == 'running'
+                )
+                else 'PASS'
+              ),
+              'detail': (
+                'active firewall detected - review required'
+                if (
+                  'Status: active' in preflight_ufw.stdout
+                  or preflight_firewalld.stdout | trim == 'running'
+                )
+                else 'no active supported firewall detected'
+              )
+            },
+            'selinux': {
+              'status': (
+                'WARN'
+                if preflight_selinux.stdout | trim == 'Enforcing'
+                else 'PASS'
+              ),
+              'detail': preflight_selinux.stdout | trim
+            },
+            'apparmor': {
+              'status': (
+                'WARN'
+                if preflight_apparmor.stdout | trim == 'enabled'
+                else 'PASS'
+              ),
+              'detail': preflight_apparmor.stdout | trim
+            },
+            'proxy': {
+              'status': (
+                'WARN'
+                if preflight_proxy_configured
+                else 'PASS'
+              ),
+              'detail': (
+                'proxy configured - NO_PROXY requirements must be validated'
+                if preflight_proxy_configured
+                else 'not configured'
+              )
+            }
+          }, recursive=True)
+      }}
+
+- name: Añadir evaluación de conectividad online
+  ansible.builtin.set_fact:
+    preflight_checks: >-
+      {{
+        preflight_checks
+        | combine({
+            'rke2_download': {
+              'status': 'PASS' if preflight_rke2_download.status | default(0) in [200, 301, 302] else 'FAIL',
+              'detail': 'get.rke2.io reachable' if preflight_rke2_download.status | default(0) in [200, 301, 302] else 'get.rke2.io unreachable'
+            },
+            'rancher_repository': {
+              'status': 'PASS' if preflight_rancher_repository.status | default(0) in [200, 301, 302] else 'FAIL',
+              'detail': 'Rancher chart repository reachable' if preflight_rancher_repository.status | default(0) in [200, 301, 302] else 'Rancher chart repository unreachable'
+            },
+            'certmanager_repository': {
+              'status': 'PASS' if preflight_certmanager_repository.status | default(0) in [200, 301, 302] else 'FAIL',
+              'detail': 'cert-manager chart repository reachable' if preflight_certmanager_repository.status | default(0) in [200, 301, 302] else 'cert-manager chart repository unreachable'
+            }
+          }, recursive=True)
+      }}
+
+- name: Calcular resultado global
+  ansible.builtin.set_fact:
+    preflight_failed_checks: >-
+      {{
+        preflight_checks
+        | dict2items
+        | selectattr('value.status', 'equalto', 'FAIL')
+        | map(attribute='key')
+        | list
+      }}
+
