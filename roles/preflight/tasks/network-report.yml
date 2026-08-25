@@ -1,0 +1,71 @@
+---
+- name: Crear carpeta de evidencias preflight
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/../artifacts/validation/{{ environment_name }}"
+    state: directory
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+- name: Generar matriz de red requerida
+  ansible.builtin.copy:
+    dest: "{{ playbook_dir }}/../artifacts/validation/{{ environment_name }}/network-requirements.txt"
+    mode: "0600"
+    content: |
+      RKE2 NETWORK REQUIREMENTS
+      =========================
+
+      Environment:
+        {{ environment_name }}
+
+      API endpoint:
+        {{ rke2_api_hostname }}
+
+      Load balancer / VIP:
+        {{ load_balancer_ip }}
+
+      RKE2 Servers:
+      {% for host in groups['rke2_servers'] %}
+        - {{ host }} -> {{ hostvars[host].ansible_host }}
+      {% endfor %}
+
+      RKE2 Agents:
+      {% for host in groups['rke2_agents'] %}
+        - {{ host }} -> {{ hostvars[host].ansible_host }}
+      {% endfor %}
+
+      REQUIRED COMMUNICATION
+      ======================
+
+      Server -> Server TCP:
+      {% for port in rke2_network_requirements.server_to_server_tcp %}
+        - {{ port }}
+      {% endfor %}
+
+      All nodes -> Servers TCP:
+      {% for port in rke2_network_requirements.node_to_server_tcp %}
+        - {{ port }}
+      {% endfor %}
+
+      Servers -> All nodes TCP:
+      {% for port in rke2_network_requirements.server_to_node_tcp %}
+        - {{ port }}
+      {% endfor %}
+
+      Canal overlay UDP:
+      {% for port in rke2_network_requirements.canal_overlay_udp %}
+        - {{ port }}
+      {% endfor %}
+
+      Kubernetes networks:
+        Pods:     {{ rke2_cluster_cidr }}
+        Services: {{ rke2_service_cidr }}
+        DNS:      {{ rke2_cluster_dns }}
+
+      MTU detected:
+      {% for host in groups['rke2_cluster'] %}
+        {{ host }}: {{ hostvars[host].ansible_default_ipv4.mtu | default('unknown') }}
+      {% endfor %}
+  delegate_to: localhost
+  become: false
+  run_once: true

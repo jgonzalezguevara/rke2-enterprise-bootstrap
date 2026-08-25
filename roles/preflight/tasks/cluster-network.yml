@@ -1,0 +1,109 @@
+---
+- name: Definir requisitos de red RKE2
+  ansible.builtin.set_fact:
+    rke2_network_requirements:
+      server_to_server_tcp:
+        - 2379
+        - 2380
+        - 9345
+
+      node_to_server_tcp:
+        - 9345
+        - 6443
+
+      server_to_node_tcp:
+        - 10250
+
+      canal_overlay_udp:
+        - 8472
+
+- name: Construir lista de direcciones del clúster
+  ansible.builtin.set_fact:
+    preflight_cluster_addresses: >-
+      {{
+        groups['rke2_cluster']
+        | map('extract', hostvars, 'ansible_host')
+        | list
+      }}
+
+- name: Construir lista de MTU del clúster
+  ansible.builtin.set_fact:
+    preflight_cluster_mtus: >-
+      {%- set mtus = [] -%}
+      {%- for host in groups['rke2_cluster'] -%}
+      {%-   set mtu = hostvars[host].ansible_default_ipv4.mtu | default('unknown') -%}
+      {%-   set _ = mtus.append(mtu) -%}
+      {%- endfor -%}
+      {{ mtus }}
+
+- name: Evaluar direcciones duplicadas
+  ansible.builtin.set_fact:
+    preflight_cluster_addresses_unique: >-
+      {{
+        preflight_cluster_addresses
+        | unique
+        | length
+        ==
+        preflight_cluster_addresses
+        | length
+      }}
+
+- name: Evaluar coherencia de MTU
+  ansible.builtin.set_fact:
+    preflight_cluster_mtu_consistent: >-
+      {{
+        preflight_cluster_mtus
+        | unique
+        | length == 1
+      }}
+
+- name: Resolver endpoint estable RKE2
+  ansible.builtin.command:
+    cmd: "getent ahostsv4 {{ rke2_api_hostname }}"
+  register: preflight_cluster_api_resolution
+  changed_when: false
+  failed_when: false
+
+- name: Extraer direcciones del endpoint RKE2
+  ansible.builtin.set_fact:
+    preflight_cluster_api_addresses: >-
+      {{
+        preflight_cluster_api_resolution.stdout_lines
+        | map('split')
+        | map('first')
+        | unique
+        | list
+      }}
+  when: preflight_cluster_api_resolution.rc == 0
+
+- name: Evaluar correspondencia DNS con VIP
+  ansible.builtin.set_fact:
+    preflight_cluster_api_matches_vip: >-
+      {{
+        load_balancer_ip
+        in
+        (preflight_cluster_api_addresses | default([]))
+      }}
+
+- name: Generar matriz lógica de comunicaciones
+  ansible.builtin.set_fact:
+    preflight_network_matrix:
+      server_to_server:
+        source: rke2_servers
+        destination: rke2_servers
+        tcp: "{{ rke2_network_requirements.server_to_server_tcp }}"
+
+      nodes_to_servers:
+        source: rke2_cluster
+        destination: rke2_servers
+        tcp: "{{ rke2_network_requirements.node_to_server_tcp }}"
+
+      servers_to_nodes:
+        source: rke2_servers
+        destination: rke2_cluster
+        tcp: "{{ rke2_network_requirements.server_to_node_tcp }}"
+
+      canal_overlay:
+        source: rke2_cluster
+        destination: rke2_cluster
+        udp: "{{ rke2_network_requirements.canal_overlay_udp }}"

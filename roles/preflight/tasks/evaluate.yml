@@ -187,6 +187,69 @@
           }, recursive=True)
       }}
 
+- name: Añadir evaluación global de red
+  ansible.builtin.set_fact:
+    preflight_checks: >-
+      {{
+        preflight_checks
+        | combine({
+            'cluster_addresses': {
+              'status': (
+                'PASS'
+                if preflight_cluster_addresses_unique
+                else 'FAIL'
+              ),
+              'detail': (
+                'all node addresses are unique'
+                if preflight_cluster_addresses_unique
+                else 'duplicate node addresses detected'
+              )
+            },
+            'cluster_mtu': {
+              'status': (
+                'PASS'
+                if preflight_cluster_mtu_consistent
+                else 'WARN'
+              ),
+              'detail': (
+                'consistent MTU across cluster'
+                if preflight_cluster_mtu_consistent
+                else 'different MTU values detected: ' ~ (
+                  preflight_cluster_mtus
+                  | unique
+                  | map('string')
+                  | join(', ')
+                )
+              )
+            },
+            'api_vip': {
+              'status': (
+                'FAIL'
+                if preflight_cluster_api_resolution.rc != 0
+                else (
+                  'PASS'
+                  if preflight_cluster_api_matches_vip
+                  else 'WARN'
+                )
+              ),
+              'detail': (
+                rke2_api_hostname ~ ' cannot be resolved'
+                if preflight_cluster_api_resolution.rc != 0
+                else (
+                  rke2_api_hostname ~
+                  ' resolves to configured VIP ' ~
+                  load_balancer_ip
+                  if preflight_cluster_api_matches_vip
+                  else
+                  rke2_api_hostname ~
+                  ' resolves, but not directly to configured VIP ' ~
+                  load_balancer_ip
+                )
+              )
+            }
+          }, recursive=True)
+      }}
+
 - name: Calcular resultado global
   ansible.builtin.set_fact:
     preflight_failed_checks: >-
