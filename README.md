@@ -169,6 +169,36 @@ permisos restrictivos, eliminado automáticamente al finalizar.
 > verificarse también mediante ejecuciones repetidas sobre un clúster de
 > integración real.
 
+### Estado observado y detección de drift
+
+Consultar el estado observado de una plataforma desplegada:
+
+```bash
+./rke2-deploy status ENVIRONMENT
+```
+
+`status` es una operación de solo lectura y no requiere Ansible Vault.
+
+Recoge y compara:
+
+- versión RKE2 instalada en cada nodo;
+- versión RKE2 declarada;
+- número de nodos observado y esperado;
+- miembros y salud de etcd;
+- release de Rancher;
+- release de cert-manager;
+- topología declarada;
+- desviaciones entre estado deseado y observado.
+
+El comando informa del drift sin modificar la plataforma ni bloquear la
+consulta.
+
+Cada ejecución conserva una evidencia local en:
+
+```text
+artifacts/status/<environment>/
+```
+
 ### Seguridad de configuración
 
 Los entornos reales se generan localmente dentro de:

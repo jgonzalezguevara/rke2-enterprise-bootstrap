@@ -1,0 +1,72 @@
+---
+- name: Construir estado RKE2 por nodo
+  ansible.builtin.set_fact:
+    status_rke2_nodes: >-
+      {%- set nodes = [] -%}
+      {%- for host in groups['rke2_cluster'] -%}
+      {%-   set _ = nodes.append({
+              'host': host,
+              'role': (
+                'server'
+                if host in groups['rke2_servers']
+                else 'agent'
+              ),
+              'version': hostvars[host].status_rke2_version | default('unknown'),
+              'expected': rke2_version,
+              'match': (
+                hostvars[host].status_rke2_version | default('unknown')
+                == rke2_version
+              )
+            }) -%}
+      {%- endfor -%}
+      {{ nodes }}
+
+- name: Construir lista de nodos con drift RKE2
+  ansible.builtin.set_fact:
+    status_rke2_drift: >-
+      {{
+        status_rke2_nodes
+        | rejectattr('match', 'equalto', true)
+        | list
+      }}
+
+- name: Evaluar versiones de componentes
+  ansible.builtin.set_fact:
+    status_certmanager_match: >-
+      {{
+        status_certmanager_chart
+        ==
+        'cert-manager-' ~ cert_manager_version
+      }}
+    status_rancher_match: >-
+      {{
+        status_rancher_chart
+        ==
+        'rancher-' ~ rancher_version
+      }}
+    status_node_count_match: >-
+      {{
+        status_detected_nodes | int
+        ==
+        expected_cluster_nodes | int
+      }}
+
+- name: Evaluar salud de etcd
+  ansible.builtin.set_fact:
+    status_etcd_match: >-
+      {{
+        status_etcd_state == 'healthy'
+        and status_etcd_member_count | int
+        == expected_rke2_servers | int
+      }}
+
+- name: Calcular consistencia global
+  ansible.builtin.set_fact:
+    status_platform_consistent: >-
+      {{
+        status_rke2_drift | length == 0
+        and status_certmanager_match
+        and status_rancher_match
+        and status_node_count_match
+        and status_etcd_match
+      }}

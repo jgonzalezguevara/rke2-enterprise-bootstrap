@@ -1,0 +1,86 @@
+---
+- name: Comprobar etcdctl
+  ansible.builtin.stat:
+    path: /var/lib/rancher/rke2/bin/etcdctl
+  register: status_etcdctl
+
+- name: Consultar miembros etcd
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/etcdctl
+      --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt
+      --cert=/var/lib/rancher/rke2/server/tls/etcd/server-client.crt
+      --key=/var/lib/rancher/rke2/server/tls/etcd/server-client.key
+      member list
+  environment:
+    ETCDCTL_API: "3"
+  register: status_etcd_members
+  changed_when: false
+  failed_when: false
+  when: status_etcdctl.stat.exists
+
+- name: Consultar salud etcd
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/etcdctl
+      --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt
+      --cert=/var/lib/rancher/rke2/server/tls/etcd/server-client.crt
+      --key=/var/lib/rancher/rke2/server/tls/etcd/server-client.key
+      endpoint health
+      --cluster
+  environment:
+    ETCDCTL_API: "3"
+  register: status_etcd_health
+  changed_when: false
+  failed_when: false
+  when: status_etcdctl.stat.exists
+
+- name: Comprobar Helm
+  ansible.builtin.stat:
+    path: /usr/local/bin/helm
+  register: status_helm_binary
+
+- name: Consultar release cert-manager
+  kubernetes.core.helm_info:
+    name: cert-manager
+    release_namespace: cert-manager
+    kubeconfig: /etc/rancher/rke2/rke2.yaml
+    binary_path: /usr/local/bin/helm
+  register: status_certmanager_release
+  failed_when: false
+  when: status_helm_binary.stat.exists
+
+- name: Consultar release Rancher
+  kubernetes.core.helm_info:
+    name: rancher
+    release_namespace: cattle-system
+    kubeconfig: /etc/rancher/rke2/rke2.yaml
+    binary_path: /usr/local/bin/helm
+  register: status_rancher_release
+  failed_when: false
+  when: status_helm_binary.stat.exists
+
+- name: Normalizar estado observado de componentes
+  ansible.builtin.set_fact:
+    status_certmanager_chart: >-
+      {{
+        status_certmanager_release.status.chart
+        | default('not-installed')
+      }}
+    status_rancher_chart: >-
+      {{
+        status_rancher_release.status.chart
+        | default('not-installed')
+      }}
+    status_etcd_member_count: >-
+      {{
+        status_etcd_members.stdout_lines
+        | default([])
+        | length
+      }}
+    status_etcd_state: >-
+      {{
+        'healthy'
+        if status_etcd_health.rc | default(127) == 0
+        else 'unavailable'
+      }}

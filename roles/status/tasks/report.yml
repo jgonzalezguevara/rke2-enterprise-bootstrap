@@ -1,0 +1,53 @@
+---
+- name: Mostrar estado de plataforma
+  ansible.builtin.debug:
+    msg:
+      - "============================================================"
+      - "RKE2 PLATFORM STATUS"
+      - "============================================================"
+      - "Environment       {{ environment_name }}"
+      - "Cluster           {{ cluster_name }}"
+      - "Topology          {{ deployment_topology }}"
+      - ""
+      - "Inventory"
+      - "---------"
+      - "Servers           {{ groups['rke2_servers'] | length }} inventory / {{ expected_rke2_servers }} expected"
+      - "Agents            {{ groups['rke2_agents'] | default([]) | length }} inventory / {{ expected_rke2_agents }} expected"
+      - "Nodes             {{ status_detected_nodes }} detected / {{ expected_cluster_nodes }} expected"
+      - ""
+      - "Observed components"
+      - "-------------------"
+      - "Rancher           {{ status_rancher_chart }}"
+      - "cert-manager      {{ status_certmanager_chart }}"
+      - "etcd members      {{ status_etcd_member_count }}"
+      - "etcd health       {{ status_etcd_state }}"
+      - ""
+      - "Desired versions"
+      - "----------------"
+      - "RKE2              {{ rke2_version }}"
+      - "Rancher           {{ rancher_version }}"
+      - "cert-manager      {{ cert_manager_version }}"
+      - "CNI               {{ rke2_cni }}"
+      - ""
+      - "Configuration drift"
+      - "-------------------"
+      - "RKE2              {{ 'MATCH' if status_rke2_drift | length == 0 else 'DRIFT' }}"
+      - "Rancher           {{ 'MATCH' if status_rancher_match else 'DRIFT' }}"
+      - "cert-manager      {{ 'MATCH' if status_certmanager_match else 'DRIFT' }}"
+      - "Node count        {{ 'MATCH' if status_node_count_match else 'DRIFT' }}"
+      - "etcd              {{ 'MATCH' if status_etcd_match else 'DRIFT' }}"
+      - ""
+      - "RESULT            {{ 'CONSISTENT' if status_platform_consistent else 'DRIFT DETECTED' }}"
+      - "============================================================"
+
+- name: Mostrar versiones RKE2 por nodo
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.host }}
+      role={{ item.role }}
+      installed={{ item.version }}
+      desired={{ item.expected }}
+      status={{ 'MATCH' if item.match else 'DRIFT' }}
+  loop: "{{ status_rke2_nodes }}"
+  loop_control:
+    label: "{{ item.host }}"
