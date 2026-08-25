@@ -1,0 +1,14 @@
+---
+- name: Reiniciar RKE2 server
+  ansible.builtin.systemd:
+    name: rke2-server
+    state: restarted
+    daemon_reload: true
+  when: inventory_hostname in groups['rke2_servers']
+
+- name: Reiniciar RKE2 agent
+  ansible.builtin.systemd:
+    name: rke2-agent
+    state: restarted
+    daemon_reload: true
+  when: inventory_hostname in groups['rke2_agents']

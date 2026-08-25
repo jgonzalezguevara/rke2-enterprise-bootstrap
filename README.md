@@ -141,6 +141,34 @@ Los checks se clasifican como PASS, WARN o FAIL.
 
 El informe se muestra antes de bloquear una instalación incompatible.
 
+### Convergencia y protección de versiones
+
+El bootstrap está diseñado para poder converger sobre hosts ya preparados sin
+reinstalar componentes innecesariamente.
+
+Durante una ejecución:
+
+- la preparación del sistema utiliza módulos declarativos de Ansible;
+- los parámetros `sysctl` se mantienen en `/etc/sysctl.d/90-rke2.conf`;
+- RKE2 no se reinstala cuando ya está presente con la versión solicitada;
+- la configuración de RKE2 solo provoca un reinicio cuando cambia;
+- cert-manager y Rancher se gestionan mediante módulos Helm de Ansible;
+- las releases existentes se inspeccionan antes de modificarlas;
+- los cambios de versión de RKE2, cert-manager o Rancher se bloquean durante
+  el bootstrap y deben realizarse mediante un procedimiento Day-2 explícito.
+
+Esto evita convertir una segunda ejecución del bootstrap en un upgrade
+implícito de la plataforma.
+
+La contraseña de Ansible Vault se solicita una sola vez durante `install` y se
+reutiliza únicamente durante esa ejecución mediante un fichero temporal con
+permisos restrictivos, eliminado automáticamente al finalizar.
+
+> La convergencia está implementada por diseño y validada mediante análisis
+> estático y comprobaciones de sintaxis. La idempotencia completa debe
+> verificarse también mediante ejecuciones repetidas sobre un clúster de
+> integración real.
+
 ### Seguridad de configuración
 
 Los entornos reales se generan localmente dentro de:

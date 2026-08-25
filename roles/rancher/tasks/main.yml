@@ -2,8 +2,11 @@
 - name: Esperar todos los nodos RKE2 Ready
   ansible.builtin.shell: |
     set -o pipefail
-    /var/lib/rancher/rke2/bin/kubectl       --kubeconfig /etc/rancher/rke2/rke2.yaml       get nodes --no-headers |
-    awk -v expected="{{ expected_cluster_nodes }}"       '$2=="Ready"{n++} END{exit !(n==expected)}'
+    /var/lib/rancher/rke2/bin/kubectl \
+      --kubeconfig /etc/rancher/rke2/rke2.yaml \
+      get nodes --no-headers |
+    awk -v expected="{{ expected_cluster_nodes }}" \
+      '$2=="Ready"{n++} END{exit !(n==expected)}'
   args:
     executable: /bin/bash
   register: ready_nodes
@@ -12,40 +15,144 @@
   until: ready_nodes.rc == 0
   changed_when: false
 
-- name: Instalar Helm
-  ansible.builtin.shell: curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-  args:
-    creates: /usr/local/bin/helm
+- name: Comprobar si Helm está instalado
+  ansible.builtin.stat:
+    path: /usr/local/bin/helm
+  register: rancher_helm_binary
 
-- name: Configurar repositorios Helm
+- name: Instalar Helm cuando no está disponible
   ansible.builtin.shell: |
-    helm repo add jetstack https://charts.jetstack.io --force-update
-    helm repo add rancher-stable https://releases.rancher.com/server-charts/stable --force-update
-    helm repo update
-  environment:
-    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
-  changed_when: true
+    set -o pipefail
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 |
+    bash
+  args:
+    executable: /bin/bash
+  when: not rancher_helm_binary.stat.exists
 
-- name: Instalar cert-manager
-  ansible.builtin.command: >-
-    helm upgrade --install cert-manager jetstack/cert-manager
-    --namespace cert-manager --create-namespace
-    --version {{ cert_manager_version }}
-    --set crds.enabled=true
-    --wait --timeout 10m
-  environment:
-    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+- name: Configurar repositorio Helm de cert-manager
+  kubernetes.core.helm_repository:
+    name: jetstack
+    repo_url: https://charts.jetstack.io
 
-- name: Instalar Rancher
-  ansible.builtin.command: >-
-    helm upgrade --install rancher rancher-stable/rancher
-    --namespace cattle-system --create-namespace
-    --version {{ rancher_version }}
-    --set hostname={{ rancher_hostname }}
-    --set replicas={{ rancher_replicas }}
-    --set bootstrapPassword={{ vault_rancher_bootstrap_password }}
-    --set ingress.tls.source={{ rancher_tls_source }}
-    --wait --timeout 15m
-  environment:
-    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+- name: Configurar repositorio Helm de Rancher
+  kubernetes.core.helm_repository:
+    name: rancher-stable
+    repo_url: https://releases.rancher.com/server-charts/stable
+
+- name: Consultar release existente de cert-manager
+  kubernetes.core.helm_info:
+    name: cert-manager
+    release_namespace: cert-manager
+    kubeconfig: /etc/rancher/rke2/rke2.yaml
+  register: cert_manager_release
+
+- name: Consultar release existente de Rancher
+  kubernetes.core.helm_info:
+    name: rancher
+    release_namespace: cattle-system
+    kubeconfig: /etc/rancher/rke2/rke2.yaml
+  register: rancher_release
+
+- name: Extraer versión desplegada de cert-manager
+  ansible.builtin.set_fact:
+    cert_manager_installed_chart: >-
+      {{
+        cert_manager_release.status.chart
+        | default('')
+      }}
+
+- name: Extraer versión desplegada de Rancher
+  ansible.builtin.set_fact:
+    rancher_installed_chart: >-
+      {{
+        rancher_release.status.chart
+        | default('')
+      }}
+
+- name: Validar versión existente de cert-manager
+  ansible.builtin.assert:
+    that:
+      - >-
+        cert_manager_installed_chart | length == 0
+        or
+        cert_manager_installed_chart == 'cert-manager-' ~ cert_manager_version
+    fail_msg: >-
+      cert-manager está desplegado como
+      {{ cert_manager_installed_chart }}, pero el inventario solicita
+      cert-manager-{{ cert_manager_version }}. Los cambios de versión
+      requieren un procedimiento de upgrade Day-2 explícito y no se
+      realizan durante el bootstrap.
+    success_msg: >-
+      {{
+        'cert-manager no está desplegado; se instalará ' ~ cert_manager_version
+        if cert_manager_installed_chart | length == 0
+        else 'cert-manager ' ~ cert_manager_version ~ ' ya está desplegado'
+      }}
+
+- name: Validar versión existente de Rancher
+  ansible.builtin.assert:
+    that:
+      - >-
+        rancher_installed_chart | length == 0
+        or
+        rancher_installed_chart == 'rancher-' ~ rancher_version
+    fail_msg: >-
+      Rancher está desplegado como
+      {{ rancher_installed_chart }}, pero el inventario solicita
+      rancher-{{ rancher_version }}. Los cambios de versión requieren
+      un procedimiento de upgrade Day-2 explícito y no se realizan
+      durante el bootstrap.
+    success_msg: >-
+      {{
+        'Rancher no está desplegado; se instalará ' ~ rancher_version
+        if rancher_installed_chart | length == 0
+        else 'Rancher ' ~ rancher_version ~ ' ya está desplegado'
+      }}
+
+- name: Instalar o converger cert-manager
+  kubernetes.core.helm:
+    name: cert-manager
+    chart_ref: jetstack/cert-manager
+    chart_version: "{{ cert_manager_version }}"
+    release_namespace: cert-manager
+    create_namespace: true
+    kubeconfig: /etc/rancher/rke2/rke2.yaml
+    update_repo_cache: true
+    wait: true
+    timeout: 10m
+    release_values:
+      crds:
+        enabled: true
+
+- name: Esperar despliegues de cert-manager disponibles
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/kubectl
+      --kubeconfig /etc/rancher/rke2/rke2.yaml
+      wait
+      --namespace cert-manager
+      --for=condition=Available
+      deployment
+      --all
+      --timeout=600s
+  changed_when: false
+
+- name: Instalar o converger Rancher
+  kubernetes.core.helm:
+    name: rancher
+    chart_ref: rancher-stable/rancher
+    chart_version: "{{ rancher_version }}"
+    release_namespace: cattle-system
+    create_namespace: true
+    kubeconfig: /etc/rancher/rke2/rke2.yaml
+    update_repo_cache: true
+    wait: true
+    timeout: 15m
+    release_values:
+      hostname: "{{ rancher_hostname }}"
+      replicas: "{{ rancher_replicas | int }}"
+      bootstrapPassword: "{{ vault_rancher_bootstrap_password }}"
+      ingress:
+        tls:
+          source: "{{ rancher_tls_source }}"
   no_log: true
