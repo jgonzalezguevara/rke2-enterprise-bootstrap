@@ -2,6 +2,8 @@
 environment_name: "example"
 cluster_name: "example-rke2"
 
+deployment_topology: "ha"
+
 minimum_vcpus: 4
 minimum_memory_mb: 7800
 

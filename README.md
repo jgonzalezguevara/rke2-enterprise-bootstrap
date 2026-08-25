@@ -61,17 +61,44 @@ VALIDATION
 
 ### Topología dinámica
 
-El asistente permite definir:
+El asistente soporta dos modelos de despliegue:
 
-- número de nodos RKE2 Server;
-- número de nodos RKE2 Agent;
+#### Single-node
+
+Pensado para laboratorio, validación y entornos no HA.
+
+- 1 nodo RKE2 Server.
+- 0 o más nodos RKE2 Agent.
+- Sin alta disponibilidad del control plane ni de etcd.
+
+#### High Availability
+
+Pensado para plataformas con etcd embebido distribuido.
+
+- Mínimo de 3 nodos RKE2 Server.
+- El número de servers debe ser impar.
+- 0 o más nodos RKE2 Agent.
+
+Además, el asistente permite definir:
+
 - endpoint estable para RKE2;
 - VIP o dirección del balanceador;
 - redes de pods y servicios;
 - DNS interno de Kubernetes;
 - versiones de RKE2, Rancher y cert-manager.
 
-Para topologías HA con etcd embebido se exige un mínimo de tres servers y un número impar de miembros.
+La topología elegida se almacena en el inventario mediante
+`deployment_topology`.
+
+La validación local comprueba antes del despliegue:
+
+- que exista al menos un RKE2 Server;
+- que una topología `single` tenga exactamente un server;
+- que una topología `ha` tenga al menos tres servers y un número impar;
+- que exista exactamente un nodo bootstrap con `rke2_first_server=true`;
+- que los contadores `expected_rke2_servers`, `expected_rke2_agents` y
+  `expected_cluster_nodes` coincidan con el inventario real;
+- que estén presentes las variables obligatorias del entorno.
 
 ### Preflight basado en capacidades
 

@@ -181,19 +181,49 @@ key="$(def 'Clave privada SSH' "$HOME/.ssh/id_ed25519")"
 echo
 echo "Cluster topology"
 echo "----------------"
+echo
+echo "Selecciona la topología de despliegue:"
+echo
+echo "  1) Single-node / laboratorio"
+echo "     Un único RKE2 Server. Sin alta disponibilidad."
+echo
+echo "  2) HA"
+echo "     Tres o más RKE2 Servers, siempre en número impar."
+echo
 
 while true; do
-  server_count="$(ask_integer 'Número de RKE2 servers' '3' '3')"
+  read -r -p "Topología [1/2] (default: 2): " topology_choice
+  topology_choice="${topology_choice:-2}"
 
-  if (( server_count % 2 == 0 )); then
-    echo "El número de RKE2 servers debe ser impar para una topología etcd HA." >&2
-    continue
-  fi
+  case "$topology_choice" in
+    1)
+      deployment_topology="single"
+      server_count=1
+      break
+      ;;
+    2)
+      deployment_topology="ha"
 
-  break
+      while true; do
+        server_count="$(ask_integer 'Número de RKE2 servers' '3' '3')"
+
+        if (( server_count % 2 == 0 )); then
+          echo "El número de RKE2 servers debe ser impar para una topología etcd HA." >&2
+          continue
+        fi
+
+        break
+      done
+
+      break
+      ;;
+    *)
+      echo "Opción no válida. Selecciona 1 o 2." >&2
+      ;;
+  esac
 done
 
-agent_count="$(ask_integer 'Número de RKE2 agents' '2' '0')"
+agent_count="$(ask_integer 'Número de RKE2 agents' '0' '0')"
 
 declare -a server_hostnames
 declare -a server_ips
@@ -363,15 +393,16 @@ mkdir -p "$dir/group_vars"
   done
 
   echo "        rke2_agents:"
-  echo "          hosts:"
 
   if (( agent_count > 0 )); then
+    echo "          hosts:"
+
     for ((i=0; i<agent_count; i++)); do
       echo "            ${agent_hostnames[$i]}:"
       echo "              ansible_host: ${agent_ips[$i]}"
     done
   else
-    echo "            {}"
+    echo "          hosts: {}"
   fi
 
   echo "  vars:"
@@ -386,6 +417,8 @@ cat > "$dir/group_vars/all.yml" <<EOF_VARS
 ---
 environment_name: "$name"
 cluster_name: "$cluster"
+
+deployment_topology: "$deployment_topology"
 
 minimum_vcpus: 4
 minimum_memory_mb: 7800
