@@ -1,0 +1,190 @@
+---
+- name: Crear directorio de evidencias
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/../artifacts/validation/{{ environment_name }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+
+- name: Guardar inventario de nodos
+  ansible.builtin.copy:
+    dest: "{{ playbook_dir }}/../artifacts/validation/{{ environment_name }}/nodes.txt"
+    mode: "0600"
+    content: |
+      {{ validation_nodes.stdout | default('') }}
+  delegate_to: localhost
+  become: false
+
+- name: Guardar inventario de pods
+  ansible.builtin.copy:
+    dest: "{{ playbook_dir }}/../artifacts/validation/{{ environment_name }}/pods.txt"
+    mode: "0600"
+    content: |
+      {{ validation_pods.stdout | default('') }}
+  delegate_to: localhost
+  become: false
+
+- name: Guardar nodos no Ready
+  ansible.builtin.copy:
+    dest: "{{ playbook_dir }}/../artifacts/validation/{{ environment_name }}/not-ready-nodes.txt"
+    mode: "0600"
+    content: |
+      {{ validation_not_ready_nodes.stdout | default('') }}
+  delegate_to: localhost
+  become: false
+
+- name: Guardar pods problemáticos
+  ansible.builtin.copy:
+    dest: "{{ playbook_dir }}/../artifacts/validation/{{ environment_name }}/problematic-pods.txt"
+    mode: "0600"
+    content: |
+      {{ validation_problematic_pods.stdout | default('') }}
+  delegate_to: localhost
+  become: false
+
+- name: Guardar salud de etcd
+  ansible.builtin.copy:
+    dest: "{{ playbook_dir }}/../artifacts/validation/{{ environment_name }}/etcd.txt"
+    mode: "0600"
+    content: |
+      STDOUT:
+      {{ validation_etcd_health.stdout | default('') }}
+
+      STDERR:
+      {{ validation_etcd_health.stderr | default('') }}
+  delegate_to: localhost
+  become: false
+
+- name: Guardar estado de Rancher y cert-manager
+  ansible.builtin.copy:
+    dest: "{{ playbook_dir }}/../artifacts/validation/{{ environment_name }}/rancher.txt"
+    mode: "0600"
+    content: |
+      cert-manager
+      ============
+      {{ validation_certmanager_pods.stdout | default('') }}
+
+      Rancher
+      =======
+      {{ validation_rancher_pods.stdout | default('') }}
+
+      Rancher endpoint
+      ================
+      HTTP status: {{ validation_rancher_ping.status | default('unknown') }}
+  delegate_to: localhost
+  become: false
+
+- name: Guardar resumen de validación
+  ansible.builtin.copy:
+    dest: "{{ playbook_dir }}/../artifacts/validation/{{ environment_name }}/summary.txt"
+    mode: "0600"
+    content: |
+      RKE2 PLATFORM VALIDATION
+      ========================
+
+      Environment: {{ environment_name }}
+      Cluster:     {{ cluster_name }}
+
+      Kubernetes API   {{ validation_checks.kubernetes_api.status }}
+      Node count       {{ validation_checks.node_count.status }}
+      Node readiness   {{ validation_checks.node_readiness.status }}
+      Workloads        {{ validation_checks.workloads.status }}
+      etcd             {{ validation_checks.etcd.status }}
+      cert-manager     {{ validation_checks.cert_manager.status }}
+      Rancher pods     {{ validation_checks.rancher_pods.status }}
+      Rancher endpoint {{ validation_checks.rancher_endpoint.status }}
+      Network          {{ validation_checks.network.status }}
+      CoreDNS          {{ validation_checks.coredns.status }}
+      Cluster DNS      {{ validation_checks.cluster_dns.status }}
+      Kubernetes svc   {{ validation_checks.kubernetes_service.status }}
+
+      RESULT:
+      {{ 'HEALTHY' if validation_failed_checks | length == 0 else 'UNHEALTHY' }}
+
+      Failed checks:
+      {{ validation_failed_checks | join(', ') if validation_failed_checks | length > 0 else 'none' }}
+  delegate_to: localhost
+  become: false
+
+- name: Mostrar validación de plataforma
+  ansible.builtin.debug:
+    msg:
+      - "============================================================"
+      - "RKE2 PLATFORM VALIDATION"
+      - "============================================================"
+      - "Environment       {{ environment_name }}"
+      - "Cluster           {{ cluster_name }}"
+      - ""
+      - "Kubernetes API    {{ validation_checks.kubernetes_api.status }}  {{ validation_checks.kubernetes_api.detail }}"
+      - "Node count        {{ validation_checks.node_count.status }}  {{ validation_checks.node_count.detail }}"
+      - "Node readiness    {{ validation_checks.node_readiness.status }}  {{ validation_checks.node_readiness.detail }}"
+      - "Workloads         {{ validation_checks.workloads.status }}  {{ validation_checks.workloads.detail }}"
+      - "etcd              {{ validation_checks.etcd.status }}  {{ validation_checks.etcd.detail }}"
+      - "cert-manager      {{ validation_checks.cert_manager.status }}  {{ validation_checks.cert_manager.detail }}"
+      - "Rancher pods      {{ validation_checks.rancher_pods.status }}  {{ validation_checks.rancher_pods.detail }}"
+      - "Rancher endpoint  {{ validation_checks.rancher_endpoint.status }}  {{ validation_checks.rancher_endpoint.detail }}"
+      - "Network           {{ validation_checks.network.status }}  {{ validation_checks.network.detail }}"
+      - "CoreDNS           {{ validation_checks.coredns.status }}  {{ validation_checks.coredns.detail }}"
+      - "Cluster DNS       {{ validation_checks.cluster_dns.status }}  {{ validation_checks.cluster_dns.detail }}"
+      - "Kubernetes svc    {{ validation_checks.kubernetes_service.status }}  {{ validation_checks.kubernetes_service.detail }}"
+      - ""
+      - "RESULT            {{ 'HEALTHY' if validation_failed_checks | length == 0 else 'UNHEALTHY' }}"
+      - "============================================================"
+
+- name: Guardar validación de red
+  ansible.builtin.copy:
+    dest: "{{ playbook_dir }}/../artifacts/validation/{{ environment_name }}/network.txt"
+    mode: "0600"
+    content: |
+      POST-DEPLOY NETWORK VALIDATION
+      ==============================
+
+      Total checks:  {{ validation_network_total }}
+      Passed:        {{ validation_network_passed }}
+      Failed:        {{ validation_network_failed }}
+
+      Failed checks:
+      {% if validation_network_failures | length == 0 %}
+      none
+      {% else %}
+      {% for test in validation_network_failures %}
+      - {{ test.source }} -> {{ test.destination }}:{{ test.port }} ({{ test.purpose }})
+      {% endfor %}
+      {% endif %}
+
+      Note:
+      UDP 8472 is validated functionally through Kubernetes/CNI health,
+      not through a TCP-style socket test.
+  delegate_to: localhost
+  become: false
+
+- name: Guardar validación funcional
+  ansible.builtin.copy:
+    dest: "{{ playbook_dir }}/../artifacts/validation/{{ environment_name }}/functional.txt"
+    mode: "0600"
+    content: |
+      FUNCTIONAL CLUSTER VALIDATION
+      =============================
+
+      CoreDNS:
+        Status: {{ validation_checks.coredns.status }}
+        Detail: {{ validation_checks.coredns.detail }}
+
+      Cluster DNS:
+        Status: {{ validation_checks.cluster_dns.status }}
+        Detail: {{ validation_checks.cluster_dns.detail }}
+
+      Kubernetes service:
+        Status: {{ validation_checks.kubernetes_service.status }}
+        Detail: {{ validation_checks.kubernetes_service.detail }}
+
+      DNS test output:
+      ----------------
+      {{ validation_dns_test.stdout | default('') }}
+
+      DNS test errors:
+      ----------------
+      {{ validation_dns_test.stderr | default('') }}
+  delegate_to: localhost
+  become: false

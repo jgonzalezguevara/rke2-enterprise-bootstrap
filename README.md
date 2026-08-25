@@ -174,6 +174,22 @@ Desplegar:
 ./rke2-deploy install ENVIRONMENT
 ```
 
+Validar la salud de una plataforma desplegada:
+
+```bash
+./rke2-deploy health ENVIRONMENT
+```
+
+El health check valida Kubernetes, estado de nodos y workloads, etcd,
+cert-manager, Rancher, conectividad TCP entre nodos, CoreDNS,
+resolución DNS interna y el servicio interno de Kubernetes.
+
+Las evidencias se almacenan localmente en:
+
+```text
+artifacts/validation/<environment>/
+```
+
 Listar entornos:
 
 ```bash

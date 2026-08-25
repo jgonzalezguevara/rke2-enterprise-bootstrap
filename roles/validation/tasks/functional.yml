@@ -1,0 +1,133 @@
+---
+- name: Obtener estado de CoreDNS
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/kubectl
+      --kubeconfig /etc/rancher/rke2/rke2.yaml
+      get deployment
+      -n kube-system
+      rke2-coredns-rke2-coredns
+      -o jsonpath={.status.readyReplicas}
+  register: validation_coredns_ready
+  changed_when: false
+  failed_when: false
+
+- name: Obtener réplicas deseadas de CoreDNS
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/kubectl
+      --kubeconfig /etc/rancher/rke2/rke2.yaml
+      get deployment
+      -n kube-system
+      rke2-coredns-rke2-coredns
+      -o jsonpath={.spec.replicas}
+  register: validation_coredns_desired
+  changed_when: false
+  failed_when: false
+
+- name: Eliminar posible pod de validación DNS anterior
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/kubectl
+      --kubeconfig /etc/rancher/rke2/rke2.yaml
+      delete pod rke2-bootstrap-dns-check
+      --namespace default
+      --ignore-not-found=true
+      --wait=true
+  changed_when: false
+  failed_when: false
+
+- name: Ejecutar validación funcional de DNS
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/kubectl
+      --kubeconfig /etc/rancher/rke2/rke2.yaml
+      run rke2-bootstrap-dns-check
+      --namespace default
+      --image=busybox:1.36.1
+      --restart=Never
+      --rm
+      --attach
+      --command --
+      nslookup kubernetes.default.svc.cluster.local
+  register: validation_dns_test
+  changed_when: false
+  failed_when: false
+
+- name: Comprobar servicio interno Kubernetes
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/kubectl
+      --kubeconfig /etc/rancher/rke2/rke2.yaml
+      get service kubernetes
+      --namespace default
+      -o jsonpath={.spec.clusterIP}
+  register: validation_kubernetes_service
+  changed_when: false
+  failed_when: false
+
+- name: Evaluar validaciones funcionales
+  ansible.builtin.set_fact:
+    validation_functional_checks:
+      coredns:
+        status: >-
+          {{
+            'PASS'
+            if
+            validation_coredns_ready.rc == 0
+            and validation_coredns_desired.rc == 0
+            and validation_coredns_ready.stdout | int > 0
+            and validation_coredns_ready.stdout | int
+                == validation_coredns_desired.stdout | int
+            else 'FAIL'
+          }}
+        detail: >-
+          {{
+            (validation_coredns_ready.stdout | default('0'))
+            ~ ' ready / '
+            ~ (validation_coredns_desired.stdout | default('0'))
+            ~ ' desired'
+          }}
+
+      cluster_dns:
+        status: >-
+          {{
+            'PASS'
+            if validation_dns_test.rc == 0
+            else 'FAIL'
+          }}
+        detail: >-
+          {{
+            'kubernetes.default.svc.cluster.local resolved successfully'
+            if validation_dns_test.rc == 0
+            else 'internal Kubernetes DNS resolution failed'
+          }}
+
+      kubernetes_service:
+        status: >-
+          {{
+            'PASS'
+            if
+            validation_kubernetes_service.rc == 0
+            and validation_kubernetes_service.stdout | length > 0
+            else 'FAIL'
+          }}
+        detail: >-
+          {{
+            'ClusterIP ' ~ validation_kubernetes_service.stdout
+            if
+            validation_kubernetes_service.rc == 0
+            and validation_kubernetes_service.stdout | length > 0
+            else 'kubernetes.default service unavailable'
+          }}
+
+- name: Calcular fallos funcionales
+  ansible.builtin.set_fact:
+    validation_functional_failures: >-
+      {{
+        validation_functional_checks
+        | dict2items
+        | selectattr('value.status', 'equalto', 'FAIL')
+        | map(attribute='key')
+        | list
+      }}

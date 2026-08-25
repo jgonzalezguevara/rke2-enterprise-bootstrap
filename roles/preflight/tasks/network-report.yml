@@ -47,8 +47,8 @@
         - {{ port }}
       {% endfor %}
 
-      Servers -> All nodes TCP:
-      {% for port in rke2_network_requirements.server_to_node_tcp %}
+      All nodes -> All nodes TCP:
+      {% for port in rke2_network_requirements.node_to_node_tcp %}
         - {{ port }}
       {% endfor %}
 

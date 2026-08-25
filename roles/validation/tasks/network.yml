@@ -1,0 +1,98 @@
+---
+- name: Construir matriz TCP post-deploy
+  ansible.builtin.set_fact:
+    validation_network_tests: >-
+      {%- set tests = [] -%}
+
+      {# Todos los nodos deben alcanzar 9345/6443 en todos los servers #}
+      {%- for source in groups['rke2_cluster'] -%}
+      {%-   for destination in groups['rke2_servers'] -%}
+      {%-     for port in [9345, 6443] -%}
+      {%-       set _ = tests.append({
+                  'source': source,
+                  'destination': destination,
+                  'address': hostvars[destination].ansible_host,
+                  'port': port,
+                  'purpose': 'RKE2/API'
+                }) -%}
+      {%-     endfor -%}
+      {%-   endfor -%}
+      {%- endfor -%}
+
+      {# etcd entre servers #}
+      {%- for source in groups['rke2_servers'] -%}
+      {%-   for destination in groups['rke2_servers'] -%}
+      {%-     if source != destination -%}
+      {%-       for port in [2379, 2380, 2381] -%}
+      {%-         set _ = tests.append({
+                    'source': source,
+                    'destination': destination,
+                    'address': hostvars[destination].ansible_host,
+                    'port': port,
+                    'purpose': 'etcd'
+                  }) -%}
+      {%-       endfor -%}
+      {%-     endif -%}
+      {%-   endfor -%}
+      {%- endfor -%}
+
+      {# Kubelet y Canal health: todos contra todos #}
+      {%- for source in groups['rke2_cluster'] -%}
+      {%-   for destination in groups['rke2_cluster'] -%}
+      {%-     if source != destination -%}
+      {%-       for port in [10250, 9099] -%}
+      {%-         set _ = tests.append({
+                    'source': source,
+                    'destination': destination,
+                    'address': hostvars[destination].ansible_host,
+                    'port': port,
+                    'purpose': 'kubelet/canal'
+                  }) -%}
+      {%-       endfor -%}
+      {%-     endif -%}
+      {%-   endfor -%}
+      {%- endfor -%}
+
+      {{ tests }}
+
+- name: Ejecutar pruebas TCP post-deploy
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - >-
+        import socket,sys;
+        s=socket.create_connection((sys.argv[1],int(sys.argv[2])),3);
+        s.close()
+      - "{{ item.address }}"
+      - "{{ item.port | string }}"
+  loop: "{{ validation_network_tests }}"
+  loop_control:
+    label: >-
+      {{ item.source }} -> {{ item.destination }}:{{ item.port }}
+      ({{ item.purpose }})
+  delegate_to: "{{ item.source }}"
+  register: validation_network_results
+  changed_when: false
+  failed_when: false
+
+- name: Construir lista de fallos TCP
+  ansible.builtin.set_fact:
+    validation_network_failures: >-
+      {{
+        validation_network_results.results
+        | selectattr('rc', 'ne', 0)
+        | map(attribute='item')
+        | list
+      }}
+
+- name: Construir resumen de pruebas TCP
+  ansible.builtin.set_fact:
+    validation_network_total: "{{ validation_network_results.results | length }}"
+    validation_network_failed: "{{ validation_network_failures | length }}"
+    validation_network_passed: >-
+      {{
+        validation_network_results.results | length
+        -
+        validation_network_failures | length
+      }}

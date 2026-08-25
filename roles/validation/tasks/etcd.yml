@@ -1,0 +1,29 @@
+---
+- name: Comprobar existencia de etcdctl
+  ansible.builtin.stat:
+    path: /var/lib/rancher/rke2/bin/etcdctl
+  register: validation_etcdctl
+
+- name: Consultar salud de etcd
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/etcdctl
+      --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt
+      --cert=/var/lib/rancher/rke2/server/tls/etcd/server-client.crt
+      --key=/var/lib/rancher/rke2/server/tls/etcd/server-client.key
+      endpoint health
+      --cluster
+  environment:
+    ETCDCTL_API: "3"
+  register: validation_etcd_health
+  changed_when: false
+  failed_when: false
+  when: validation_etcdctl.stat.exists
+
+- name: Definir resultado cuando etcdctl no está disponible
+  ansible.builtin.set_fact:
+    validation_etcd_health:
+      rc: 127
+      stdout: ""
+      stderr: "etcdctl not found"
+  when: not validation_etcdctl.stat.exists

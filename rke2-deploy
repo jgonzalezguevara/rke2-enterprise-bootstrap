@@ -15,6 +15,7 @@ case "$cmd" in
   ping) need_env; exec ansible -i "$ROOT/inventories/$env/hosts.yml" rke2_cluster -m ansible.builtin.ping ;;
   preflight) need_env; exec ansible-playbook -i "$ROOT/inventories/$env/hosts.yml" "$ROOT/playbooks/preflight.yml" --ask-vault-pass ;;
   install) need_env; exec "$ROOT/bootstrap/deploy.sh" "$env" ;;
+  health) need_env; exec ansible-playbook -i "$ROOT/inventories/$env/hosts.yml" "$ROOT/playbooks/validation.yml" --ask-vault-pass ;;
   inventory) need_env; exec ansible-inventory -i "$ROOT/inventories/$env/hosts.yml" --graph ;;
   list) find "$ROOT/inventories" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort ;;
   version) echo "RKE2 Deployment Assistant 1.0.0" ;;
@@ -26,6 +27,7 @@ Uso:
   ./rke2-deploy ping ENTORNO
   ./rke2-deploy preflight ENTORNO
   ./rke2-deploy install ENTORNO
+  ./rke2-deploy health ENTORNO
   ./rke2-deploy inventory ENTORNO
   ./rke2-deploy list
 EOF

@@ -1,0 +1,59 @@
+---
+- name: Obtener pods de cert-manager
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/kubectl
+      --kubeconfig /etc/rancher/rke2/rke2.yaml
+      get pods
+      -n cert-manager
+      --no-headers
+  register: validation_certmanager_pods
+  changed_when: false
+  failed_when: false
+
+- name: Obtener pods no saludables de cert-manager
+  ansible.builtin.shell: |
+    set -o pipefail
+    /var/lib/rancher/rke2/bin/kubectl       --kubeconfig /etc/rancher/rke2/rke2.yaml       get pods -n cert-manager --no-headers |
+    awk '$3 != "Running" && $3 != "Completed" && $3 != "Succeeded" {print}'
+  args:
+    executable: /bin/bash
+  register: validation_certmanager_unhealthy
+  changed_when: false
+  failed_when: false
+
+- name: Obtener pods de Rancher
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/kubectl
+      --kubeconfig /etc/rancher/rke2/rke2.yaml
+      get pods
+      -n cattle-system
+      -l app=rancher
+      --no-headers
+  register: validation_rancher_pods
+  changed_when: false
+  failed_when: false
+
+- name: Obtener pods no saludables de Rancher
+  ansible.builtin.shell: |
+    set -o pipefail
+    /var/lib/rancher/rke2/bin/kubectl       --kubeconfig /etc/rancher/rke2/rke2.yaml       get pods -n cattle-system -l app=rancher --no-headers |
+    awk '$3 != "Running" && $3 != "Completed" && $3 != "Succeeded" {print}'
+  args:
+    executable: /bin/bash
+  register: validation_rancher_unhealthy
+  changed_when: false
+  failed_when: false
+
+- name: Comprobar endpoint Rancher
+  ansible.builtin.uri:
+    url: "https://{{ rancher_hostname }}/ping"
+    method: GET
+    validate_certs: false
+    return_content: true
+    timeout: 10
+    status_code: 200
+  register: validation_rancher_ping
+  changed_when: false
+  failed_when: false

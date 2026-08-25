@@ -1,0 +1,11 @@
+---
+- name: Aplicar resultado de validación
+  ansible.builtin.assert:
+    that:
+      - validation_failed_checks | length == 0
+    success_msg: >-
+      Platform validation completed successfully.
+      Cluster {{ cluster_name }} is healthy.
+    fail_msg: >-
+      Platform validation failed.
+      Failed checks: {{ validation_failed_checks | join(', ') }}

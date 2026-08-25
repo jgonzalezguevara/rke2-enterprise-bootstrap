@@ -5,14 +5,15 @@
       server_to_server_tcp:
         - 2379
         - 2380
-        - 9345
+        - 2381
 
       node_to_server_tcp:
         - 9345
         - 6443
 
-      server_to_node_tcp:
+      node_to_node_tcp:
         - 10250
+        - 9099
 
       canal_overlay_udp:
         - 8472
@@ -98,10 +99,10 @@
         destination: rke2_servers
         tcp: "{{ rke2_network_requirements.node_to_server_tcp }}"
 
-      servers_to_nodes:
-        source: rke2_servers
+      nodes_to_nodes:
+        source: rke2_cluster
         destination: rke2_cluster
-        tcp: "{{ rke2_network_requirements.server_to_node_tcp }}"
+        tcp: "{{ rke2_network_requirements.node_to_node_tcp }}"
 
       canal_overlay:
         source: rke2_cluster

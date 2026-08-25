@@ -1,0 +1,217 @@
+---
+- name: Calcular número de nodos detectados
+  ansible.builtin.set_fact:
+    validation_detected_node_count: >-
+      {{
+        validation_node_names.stdout.split()
+        | length
+        if validation_node_names.rc == 0
+        else 0
+      }}
+
+- name: Evaluar estado de la plataforma
+  ansible.builtin.set_fact:
+    validation_checks:
+      kubernetes_api:
+        status: >-
+          {{
+            'PASS'
+            if validation_nodes.rc == 0
+            else 'FAIL'
+          }}
+        detail: >-
+          {{
+            'Kubernetes API reachable'
+            if validation_nodes.rc == 0
+            else 'Kubernetes API unavailable'
+          }}
+
+      node_count:
+        status: >-
+          {{
+            'PASS'
+            if validation_detected_node_count | int == expected_cluster_nodes | int
+            else 'FAIL'
+          }}
+        detail: >-
+          {{
+            validation_detected_node_count | string
+            ~ ' detected / '
+            ~ expected_cluster_nodes | string
+            ~ ' expected'
+          }}
+
+      node_readiness:
+        status: >-
+          {{
+            'PASS'
+            if (
+              validation_not_ready_nodes.rc == 0
+              and validation_not_ready_nodes.stdout | trim | length == 0
+            )
+            else 'FAIL'
+          }}
+        detail: >-
+          {{
+            'all nodes Ready'
+            if (
+              validation_not_ready_nodes.rc == 0
+              and validation_not_ready_nodes.stdout | trim | length == 0
+            )
+            else (
+              validation_not_ready_nodes.stdout | trim
+              if validation_not_ready_nodes.stdout | trim | length > 0
+              else 'unable to determine node readiness'
+            )
+          }}
+
+      workloads:
+        status: >-
+          {{
+            'PASS'
+            if (
+              validation_problematic_pods.rc == 0
+              and validation_problematic_pods.stdout | trim | length == 0
+            )
+            else 'FAIL'
+          }}
+        detail: >-
+          {{
+            'no problematic pods detected'
+            if (
+              validation_problematic_pods.rc == 0
+              and validation_problematic_pods.stdout | trim | length == 0
+            )
+            else (
+              validation_problematic_pods.stdout | trim
+              if validation_problematic_pods.stdout | trim | length > 0
+              else 'unable to evaluate pods'
+            )
+          }}
+
+      etcd:
+        status: >-
+          {{
+            'PASS'
+            if validation_etcd_health.rc | default(127) == 0
+            else 'FAIL'
+          }}
+        detail: >-
+          {{
+            'etcd cluster healthy'
+            if validation_etcd_health.rc | default(127) == 0
+            else (
+              validation_etcd_health.stderr
+              | default('etcd health check failed')
+              | trim
+            )
+          }}
+
+      cert_manager:
+        status: >-
+          {{
+            'PASS'
+            if (
+              validation_certmanager_pods.rc == 0
+              and validation_certmanager_pods.stdout | trim | length > 0
+              and validation_certmanager_unhealthy.stdout | trim | length == 0
+            )
+            else 'FAIL'
+          }}
+        detail: >-
+          {{
+            'cert-manager resources detected'
+            if (
+              validation_certmanager_pods.rc == 0
+              and validation_certmanager_pods.stdout | trim | length > 0
+              and validation_certmanager_unhealthy.stdout | trim | length == 0
+            )
+            else 'cert-manager resources unavailable'
+          }}
+
+      rancher_pods:
+        status: >-
+          {{
+            'PASS'
+            if (
+              validation_rancher_pods.rc == 0
+              and validation_rancher_pods.stdout | trim | length > 0
+              and validation_rancher_unhealthy.stdout | trim | length == 0
+            )
+            else 'FAIL'
+          }}
+        detail: >-
+          {{
+            'Rancher resources detected'
+            if (
+              validation_rancher_pods.rc == 0
+              and validation_rancher_pods.stdout | trim | length > 0
+              and validation_rancher_unhealthy.stdout | trim | length == 0
+            )
+            else 'Rancher resources unavailable'
+          }}
+
+      rancher_endpoint:
+        status: >-
+          {{
+            'PASS'
+            if validation_rancher_ping.status | default(0) == 200
+            else 'FAIL'
+          }}
+        detail: >-
+          {{
+            'Rancher /ping returned HTTP 200'
+            if validation_rancher_ping.status | default(0) == 200
+            else 'Rancher /ping is unavailable'
+          }}
+
+- name: Añadir evaluación de red post-deploy
+  ansible.builtin.set_fact:
+    validation_checks: >-
+      {{
+        validation_checks
+        | combine({
+            'network': {
+              'status': (
+                'PASS'
+                if validation_network_failed | int == 0
+                else 'FAIL'
+              ),
+              'detail': (
+                (validation_network_passed | string)
+                ~ ' passed / '
+                ~ (validation_network_total | string)
+                ~ ' TCP checks'
+                if validation_network_failed | int == 0
+                else
+                (validation_network_failed | string)
+                ~ ' failed / '
+                ~ (validation_network_total | string)
+                ~ ' TCP checks'
+              )
+            }
+          }, recursive=True)
+      }}
+
+- name: Añadir evaluación funcional
+  ansible.builtin.set_fact:
+    validation_checks: >-
+      {{
+        validation_checks
+        | combine({
+            'coredns': validation_functional_checks.coredns,
+            'cluster_dns': validation_functional_checks.cluster_dns,
+            'kubernetes_service': validation_functional_checks.kubernetes_service
+          }, recursive=True)
+      }}
+
+- name: Calcular checks fallidos
+  ansible.builtin.set_fact:
+    validation_failed_checks: >-
+      {{
+        validation_checks
+        | dict2items
+        | selectattr('value.status', 'equalto', 'FAIL')
+        | map(attribute='key')
+        | list
+      }}
