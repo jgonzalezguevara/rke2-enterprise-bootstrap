@@ -12,6 +12,7 @@ expected_rke2_agents: 2
 expected_cluster_nodes: 5
 
 rke2_api_hostname: "api.cluster.example"
+rke2_endpoint_ip: "192.0.2.10"
 rancher_hostname: "rancher.cluster.example"
 load_balancer_ip: "192.0.2.10"
 

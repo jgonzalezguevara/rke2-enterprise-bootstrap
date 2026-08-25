@@ -90,8 +90,10 @@ required_variables = (
     "rancher_version",
     "cert_manager_version",
     "rke2_api_hostname",
+    "rke2_endpoint_ip",
     "rancher_hostname",
     "load_balancer_ip",
+    "rancher_replicas",
     "rke2_cluster_cidr",
     "rke2_service_cidr",
     "rke2_cluster_dns",
@@ -126,6 +128,41 @@ if topology == "single":
             "one RKE2 server"
         )
 
+    server_ip = str(
+        hostvars[first_server].get("ansible_host", "")
+    ).strip()
+
+    endpoint_ip = str(
+        vars_data["rke2_endpoint_ip"]
+    ).strip()
+
+    load_balancer_ip = str(
+        vars_data["load_balancer_ip"] or ""
+    ).strip()
+
+    rancher_replicas = int(
+        vars_data["rancher_replicas"]
+    )
+
+    if endpoint_ip != server_ip:
+        raise SystemExit(
+            "ERROR: single topology requires "
+            "rke2_endpoint_ip to match the RKE2 server IP "
+            f"({endpoint_ip} != {server_ip})"
+        )
+
+    if load_balancer_ip:
+        raise SystemExit(
+            "ERROR: single topology must not define "
+            "load_balancer_ip"
+        )
+
+    if rancher_replicas != 1:
+        raise SystemExit(
+            "ERROR: single topology requires "
+            "rancher_replicas=1"
+        )
+
 elif topology == "ha":
     if server_count < 3:
         raise SystemExit(
@@ -137,6 +174,47 @@ elif topology == "ha":
         raise SystemExit(
             "ERROR: HA topology requires an odd "
             "number of RKE2 servers"
+        )
+
+    endpoint_ip = str(
+        vars_data["rke2_endpoint_ip"]
+    ).strip()
+
+    load_balancer_ip = str(
+        vars_data["load_balancer_ip"] or ""
+    ).strip()
+
+    rancher_replicas = int(
+        vars_data["rancher_replicas"]
+    )
+
+    if not load_balancer_ip:
+        raise SystemExit(
+            "ERROR: HA topology requires load_balancer_ip"
+        )
+
+    if endpoint_ip != load_balancer_ip:
+        raise SystemExit(
+            "ERROR: HA topology requires rke2_endpoint_ip "
+            "to match load_balancer_ip "
+            f"({endpoint_ip} != {load_balancer_ip})"
+        )
+
+    node_ips = {
+        str(hostvars.get(host, {}).get("ansible_host", "")).strip()
+        for host in servers + agents
+    }
+
+    if load_balancer_ip in node_ips:
+        raise SystemExit(
+            "ERROR: load_balancer_ip must not match "
+            "any cluster node IP"
+        )
+
+    if rancher_replicas != 3:
+        raise SystemExit(
+            "ERROR: HA topology requires "
+            "rancher_replicas=3"
         )
 
 expected_servers = int(

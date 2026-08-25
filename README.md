@@ -90,6 +90,17 @@ Además, el asistente permite definir:
 La topología elegida se almacena en el inventario mediante
 `deployment_topology`.
 
+El comportamiento del endpoint depende de la topología:
+
+- En `single`, `rke2_endpoint_ip` corresponde a la IP del único RKE2 Server,
+  no se requiere `load_balancer_ip` y Rancher utiliza una réplica.
+- En `ha`, `rke2_endpoint_ip` corresponde a la VIP o dirección del balanceador,
+  `load_balancer_ip` es obligatorio y Rancher utiliza tres réplicas.
+- `rke2_api_hostname` se mantiene como nombre estable del endpoint RKE2 en
+  ambos modelos.
+- Los TLS SAN de los servidores incluyen el hostname del API y el endpoint IP
+  efectivo de la topología.
+
 La validación local comprueba antes del despliegue:
 
 - que exista al menos un RKE2 Server;

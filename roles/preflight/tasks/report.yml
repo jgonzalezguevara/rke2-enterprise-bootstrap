@@ -40,7 +40,7 @@
       - "CIDR conflicts {{ preflight_checks.cidr_conflicts.status }}  {{ preflight_checks.cidr_conflicts.detail }}"
       - "Node addresses {{ preflight_checks.cluster_addresses.status }}  {{ preflight_checks.cluster_addresses.detail }}"
       - "Cluster MTU    {{ preflight_checks.cluster_mtu.status }}  {{ preflight_checks.cluster_mtu.detail }}"
-      - "API / VIP      {{ preflight_checks.api_vip.status }}  {{ preflight_checks.api_vip.detail }}"
+      - "API endpoint   {{ preflight_checks.api_endpoint.status }}  {{ preflight_checks.api_endpoint.detail }}"
       - ""
       - "Host state"
       - "----------"

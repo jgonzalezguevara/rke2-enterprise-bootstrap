@@ -266,7 +266,16 @@ echo "-----------------"
 
 api="$(ask_dns 'DNS fijo API/registro RKE2 (example: api.cluster.example)')"
 rancher="$(ask_dns 'DNS de Rancher (example: rancher.cluster.example)')"
-vip="$(ask_ip 'VIP/IP del balanceador (example: 192.168.10.10)')"
+
+if [[ "$deployment_topology" == "ha" ]]; then
+  vip="$(ask_ip 'VIP/IP del balanceador (example: 192.168.10.10)')"
+  rke2_endpoint_ip="$vip"
+  rancher_replicas=3
+else
+  vip=""
+  rke2_endpoint_ip="${server_ips[0]}"
+  rancher_replicas=1
+fi
 
 echo
 echo "Kubernetes networks"
@@ -304,12 +313,14 @@ if [[ "$(printf '%s\n' "${all_ips[@]}" | sort -u | wc -l)" -ne "${#all_ips[@]}" 
   exit 1
 fi
 
-for node_ip in "${all_ips[@]}"; do
-  if [[ "$vip" == "$node_ip" ]]; then
-    echo "ERROR: la VIP no puede coincidir con la IP de un nodo." >&2
-    exit 1
-  fi
-done
+if [[ "$deployment_topology" == "ha" ]]; then
+  for node_ip in "${all_ips[@]}"; do
+    if [[ "$vip" == "$node_ip" ]]; then
+      echo "ERROR: la VIP no puede coincidir con la IP de un nodo." >&2
+      exit 1
+    fi
+  done
+fi
 
 echo
 echo "============================================================"
@@ -317,6 +328,7 @@ echo "SUMMARY"
 echo "============================================================"
 echo "Environment : $name"
 echo "Cluster     : $cluster"
+echo "Topology    : $deployment_topology"
 echo
 echo "RKE2 servers: $server_count"
 
@@ -337,8 +349,14 @@ done
 
 echo
 echo "API endpoint : $api"
+echo "Endpoint IP  : $rke2_endpoint_ip"
 echo "Rancher      : $rancher"
-echo "Load balancer: $vip"
+
+if [[ "$deployment_topology" == "ha" ]]; then
+  echo "Load balancer: $vip"
+else
+  echo "Load balancer: not required (single-node)"
+fi
 echo
 echo "RKE2         : $rke2"
 echo "Rancher      : $rancherv"
@@ -428,6 +446,7 @@ expected_rke2_agents: $agent_count
 expected_cluster_nodes: $((server_count + agent_count))
 
 rke2_api_hostname: "$api"
+rke2_endpoint_ip: "$rke2_endpoint_ip"
 rancher_hostname: "$rancher"
 load_balancer_ip: "$vip"
 
@@ -440,7 +459,7 @@ rke2_version: "$rke2"
 rancher_version: "$rancherv"
 cert_manager_version: "$cm"
 
-rancher_replicas: 3
+rancher_replicas: $rancher_replicas
 rancher_tls_source: "rancher"
 EOF_VARS
 

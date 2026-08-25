@@ -3,7 +3,7 @@ node-name: "{{ inventory_hostname }}"
 node-ip: "{{ ansible_host }}"
 tls-san:
   - "{{ rke2_api_hostname }}"
-  - "{{ load_balancer_ip }}"
+  - "{{ rke2_endpoint_ip }}"
 write-kubeconfig-mode: "0600"
 cluster-cidr: "{{ rke2_cluster_cidr }}"
 service-cidr: "{{ rke2_service_cidr }}"

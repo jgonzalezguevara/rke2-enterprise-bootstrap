@@ -77,11 +77,11 @@
       }}
   when: preflight_cluster_api_resolution.rc == 0
 
-- name: Evaluar correspondencia DNS con VIP
+- name: Evaluar correspondencia DNS con endpoint RKE2
   ansible.builtin.set_fact:
-    preflight_cluster_api_matches_vip: >-
+    preflight_cluster_api_matches_endpoint: >-
       {{
-        load_balancer_ip
+        rke2_endpoint_ip
         in
         (preflight_cluster_api_addresses | default([]))
       }}
