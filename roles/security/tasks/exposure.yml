@@ -1,0 +1,87 @@
+---
+- name: Interpretar Services
+  ansible.builtin.set_fact:
+    security_services_data: >-
+      {{
+        security_services.stdout
+        | from_json
+        if security_services.rc == 0
+        else {'items': []}
+      }}
+
+- name: Detectar Services expuestos
+  ansible.builtin.set_fact:
+    security_nodeport_services: >-
+      {%- set found = [] -%}
+      {%- for service in security_services_data.items -%}
+      {%-   if service.spec.type | default('ClusterIP') == 'NodePort' -%}
+      {%-     set _ = found.append(
+              service.metadata.namespace
+              ~ '/'
+              ~ service.metadata.name
+            ) -%}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ found }}
+
+    security_loadbalancer_services: >-
+      {%- set found = [] -%}
+      {%- for service in security_services_data.items -%}
+      {%-   if service.spec.type | default('ClusterIP') == 'LoadBalancer' -%}
+      {%-     set _ = found.append(
+              service.metadata.namespace
+              ~ '/'
+              ~ service.metadata.name
+            ) -%}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ found }}
+
+    security_external_ip_services: >-
+      {%- set found = [] -%}
+      {%- for service in security_services_data.items -%}
+      {%-   if service.spec.externalIPs | default([]) | length > 0 -%}
+      {%-     set _ = found.append(
+              service.metadata.namespace
+              ~ '/'
+              ~ service.metadata.name
+            ) -%}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ found }}
+
+- name: Evaluar superficie de exposición
+  ansible.builtin.set_fact:
+    security_exposure_checks:
+      nodeport:
+        status: >-
+          {{
+            'WARN'
+            if security_nodeport_services | length > 0
+            else 'PASS'
+          }}
+        detail: >-
+          {{ security_nodeport_services | length }}
+          NodePort services detected
+
+      loadbalancer:
+        status: >-
+          {{
+            'WARN'
+            if security_loadbalancer_services | length > 0
+            else 'PASS'
+          }}
+        detail: >-
+          {{ security_loadbalancer_services | length }}
+          LoadBalancer services detected
+
+      external_ips:
+        status: >-
+          {{
+            'WARN'
+            if security_external_ip_services | length > 0
+            else 'PASS'
+          }}
+        detail: >-
+          {{ security_external_ip_services | length }}
+          services with externalIPs detected

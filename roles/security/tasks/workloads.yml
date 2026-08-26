@@ -1,0 +1,143 @@
+---
+- name: Interpretar Pods
+  ansible.builtin.set_fact:
+    security_pods_data: >-
+      {{
+        security_pods.stdout
+        | from_json
+        if security_pods.rc == 0
+        else {'items': []}
+      }}
+
+- name: Detectar Pods con acceso al host
+  ansible.builtin.set_fact:
+    security_host_network_pods: >-
+      {%- set found = [] -%}
+      {%- for pod in security_pods_data.items -%}
+      {%-   if pod.spec.hostNetwork | default(false) | bool -%}
+      {%-     set _ = found.append(
+              pod.metadata.namespace ~ '/' ~ pod.metadata.name
+            ) -%}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ found }}
+
+    security_host_pid_pods: >-
+      {%- set found = [] -%}
+      {%- for pod in security_pods_data.items -%}
+      {%-   if pod.spec.hostPID | default(false) | bool -%}
+      {%-     set _ = found.append(
+              pod.metadata.namespace ~ '/' ~ pod.metadata.name
+            ) -%}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ found }}
+
+    security_host_ipc_pods: >-
+      {%- set found = [] -%}
+      {%- for pod in security_pods_data.items -%}
+      {%-   if pod.spec.hostIPC | default(false) | bool -%}
+      {%-     set _ = found.append(
+              pod.metadata.namespace ~ '/' ~ pod.metadata.name
+            ) -%}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ found }}
+
+- name: Detectar contenedores privilegiados
+  ansible.builtin.set_fact:
+    security_privileged_containers: >-
+      {%- set found = [] -%}
+      {%- for pod in security_pods_data.items -%}
+      {%-   for container in pod.spec.containers | default([]) -%}
+      {%-     if
+              container.securityContext
+              | default({})
+              | dict2items
+              | selectattr('key', 'equalto', 'privileged')
+              | selectattr('value', 'equalto', true)
+              | list
+              | length > 0
+            -%}
+      {%-       set _ = found.append(
+                pod.metadata.namespace
+                ~ '/'
+                ~ pod.metadata.name
+                ~ ':'
+                ~ container.name
+              ) -%}
+      {%-     endif -%}
+      {%-   endfor -%}
+      {%- endfor -%}
+      {{ found }}
+
+- name: Detectar Pods con ServiceAccount default
+  ansible.builtin.set_fact:
+    security_default_serviceaccount_pods: >-
+      {%- set found = [] -%}
+      {%- for pod in security_pods_data.items -%}
+      {%-   if pod.spec.serviceAccountName | default('default') == 'default' -%}
+      {%-     set _ = found.append(
+              pod.metadata.namespace ~ '/' ~ pod.metadata.name
+            ) -%}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ found }}
+
+- name: Evaluar seguridad de workloads
+  ansible.builtin.set_fact:
+    security_workload_checks:
+      privileged:
+        status: >-
+          {{
+            'WARN'
+            if security_privileged_containers | length > 0
+            else 'PASS'
+          }}
+        detail: >-
+          {{ security_privileged_containers | length }}
+          privileged containers detected
+
+      host_network:
+        status: >-
+          {{
+            'WARN'
+            if security_host_network_pods | length > 0
+            else 'PASS'
+          }}
+        detail: >-
+          {{ security_host_network_pods | length }}
+          Pods using hostNetwork
+
+      host_pid:
+        status: >-
+          {{
+            'WARN'
+            if security_host_pid_pods | length > 0
+            else 'PASS'
+          }}
+        detail: >-
+          {{ security_host_pid_pods | length }}
+          Pods using hostPID
+
+      host_ipc:
+        status: >-
+          {{
+            'WARN'
+            if security_host_ipc_pods | length > 0
+            else 'PASS'
+          }}
+        detail: >-
+          {{ security_host_ipc_pods | length }}
+          Pods using hostIPC
+
+      default_serviceaccount:
+        status: >-
+          {{
+            'WARN'
+            if security_default_serviceaccount_pods | length > 0
+            else 'PASS'
+          }}
+        detail: >-
+          {{ security_default_serviceaccount_pods | length }}
+          Pods using default ServiceAccount

@@ -1,0 +1,161 @@
+---
+- name: Obtener configuración efectiva de SSH
+  ansible.builtin.command:
+    cmd: sshd -T
+  register: security_sshd_config
+  changed_when: false
+  failed_when: false
+
+- name: Detectar UFW
+  ansible.builtin.command:
+    cmd: ufw status
+  register: security_ufw
+  changed_when: false
+  failed_when: false
+
+- name: Detectar firewalld
+  ansible.builtin.command:
+    cmd: firewall-cmd --state
+  register: security_firewalld
+  changed_when: false
+  failed_when: false
+
+- name: Detectar SELinux
+  ansible.builtin.command:
+    cmd: getenforce
+  register: security_selinux
+  changed_when: false
+  failed_when: false
+
+- name: Detectar AppArmor
+  ansible.builtin.command:
+    cmd: aa-status --enabled
+  register: security_apparmor
+  changed_when: false
+  failed_when: false
+
+- name: Comprobar configuración RKE2
+  ansible.builtin.stat:
+    path: /etc/rancher/rke2/config.yaml
+  register: security_rke2_config
+
+- name: Comprobar kubeconfig RKE2
+  ansible.builtin.stat:
+    path: /etc/rancher/rke2/rke2.yaml
+  register: security_rke2_kubeconfig
+
+- name: Obtener sockets TCP en escucha
+  ansible.builtin.command:
+    cmd: ss -H -lntp
+  register: security_listening_tcp
+  changed_when: false
+  failed_when: false
+
+- name: Evaluar controles del nodo
+  ansible.builtin.set_fact:
+    security_node_checks:
+      ssh_root_login:
+        status: >-
+          {{
+            'PASS'
+            if 'permitrootlogin no' in security_sshd_config.stdout
+            else 'WARN'
+          }}
+        detail: >-
+          {{
+            'root SSH login disabled'
+            if 'permitrootlogin no' in security_sshd_config.stdout
+            else 'root SSH login not explicitly disabled'
+          }}
+
+      ssh_password_authentication:
+        status: >-
+          {{
+            'PASS'
+            if 'passwordauthentication no' in security_sshd_config.stdout
+            else 'WARN'
+          }}
+        detail: >-
+          {{
+            'password authentication disabled'
+            if 'passwordauthentication no' in security_sshd_config.stdout
+            else 'password authentication enabled or undetermined'
+          }}
+
+      firewall:
+        status: >-
+          {{
+            'PASS'
+            if (
+              'Status: active' in security_ufw.stdout
+              or security_firewalld.stdout | trim == 'running'
+            )
+            else 'WARN'
+          }}
+        detail: >-
+          {{
+            'active host firewall detected'
+            if (
+              'Status: active' in security_ufw.stdout
+              or security_firewalld.stdout | trim == 'running'
+            )
+            else 'no supported active host firewall detected'
+          }}
+
+      mandatory_access_control:
+        status: >-
+          {{
+            'PASS'
+            if (
+              security_selinux.stdout | trim == 'Enforcing'
+              or security_apparmor.rc == 0
+            )
+            else 'WARN'
+          }}
+        detail: >-
+          SELinux={{ security_selinux.stdout | trim | default('unknown', true) }},
+          AppArmor={{ 'enabled' if security_apparmor.rc == 0 else 'not enabled' }}
+
+      rke2_config_permissions:
+        status: >-
+          {{
+            'PASS'
+            if (
+              security_rke2_config.stat.exists
+              and security_rke2_config.stat.mode == '0600'
+            )
+            else 'FAIL'
+          }}
+        detail: >-
+          {{
+            security_rke2_config.stat.mode
+            if security_rke2_config.stat.exists
+            else 'missing'
+          }}
+
+      kubeconfig_permissions:
+        status: >-
+          {{
+            'PASS'
+            if (
+              inventory_hostname not in groups['rke2_servers']
+              or (
+                security_rke2_kubeconfig.stat.exists
+                and security_rke2_kubeconfig.stat.mode == '0600'
+              )
+            )
+            else 'FAIL'
+          }}
+        detail: >-
+          {{
+            security_rke2_kubeconfig.stat.mode
+            if security_rke2_kubeconfig.stat.exists
+            else (
+              'not applicable'
+              if inventory_hostname not in groups['rke2_servers']
+              else 'missing'
+            )
+          }}
+
+- name: Generar informe de seguridad del nodo
+  ansible.builtin.import_tasks: report.yml

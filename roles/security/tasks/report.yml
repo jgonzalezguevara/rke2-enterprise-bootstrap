@@ -1,0 +1,15 @@
+---
+- name: Mostrar controles de seguridad por nodo
+  ansible.builtin.debug:
+    msg:
+      - "============================================================"
+      - "NODE SECURITY"
+      - "============================================================"
+      - "Node              {{ inventory_hostname }}"
+      - "SSH root          {{ security_node_checks.ssh_root_login.status }}  {{ security_node_checks.ssh_root_login.detail }}"
+      - "SSH password      {{ security_node_checks.ssh_password_authentication.status }}  {{ security_node_checks.ssh_password_authentication.detail }}"
+      - "Firewall          {{ security_node_checks.firewall.status }}  {{ security_node_checks.firewall.detail }}"
+      - "MAC               {{ security_node_checks.mandatory_access_control.status }}  {{ security_node_checks.mandatory_access_control.detail }}"
+      - "RKE2 config       {{ security_node_checks.rke2_config_permissions.status }}  {{ security_node_checks.rke2_config_permissions.detail }}"
+      - "Kubeconfig        {{ security_node_checks.kubeconfig_permissions.status }}  {{ security_node_checks.kubeconfig_permissions.detail }}"
+      - "============================================================"

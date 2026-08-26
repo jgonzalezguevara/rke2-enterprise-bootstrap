@@ -19,3 +19,7 @@ inventories/*
 # Runtime platform status reports
 artifacts/status/*
 !artifacts/status/.gitkeep
+
+# Runtime security assessment reports
+artifacts/security/*
+!artifacts/security/.gitkeep

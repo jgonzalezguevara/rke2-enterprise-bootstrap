@@ -1,0 +1,44 @@
+---
+- name: Evaluar Pod Security Admission
+  ansible.builtin.set_fact:
+    security_psa_namespaces: >-
+      {%- set found = [] -%}
+      {%- for ns in security_namespaces_data.items -%}
+      {%-   set labels = ns.metadata.labels | default({}) -%}
+      {%-   if 'pod-security.kubernetes.io/enforce' in labels -%}
+      {%-     set _ = found.append({
+              'namespace': ns.metadata.name,
+              'level': labels['pod-security.kubernetes.io/enforce']
+            }) -%}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ found }}
+
+- name: Calcular cobertura Pod Security Admission
+  ansible.builtin.set_fact:
+    security_psa_covered_namespaces: >-
+      {{
+        security_psa_namespaces
+        | map(attribute='namespace')
+        | intersect(security_application_namespaces)
+        | list
+      }}
+
+- name: Evaluar cobertura PSA
+  ansible.builtin.set_fact:
+    security_admission_checks:
+      pod_security:
+        status: >-
+          {{
+            'PASS'
+            if (
+              security_application_namespaces | length > 0
+              and
+              security_psa_covered_namespaces | length
+              == security_application_namespaces | length
+            )
+            else 'WARN'
+          }}
+        detail: >-
+          {{ security_psa_covered_namespaces | length }}/{{ security_application_namespaces | length }}
+          application namespaces with PSA enforce label

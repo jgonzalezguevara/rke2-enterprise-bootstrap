@@ -1,0 +1,125 @@
+---
+- name: Interpretar estado RBAC
+  ansible.builtin.set_fact:
+    security_clusterrolebindings_data: >-
+      {{
+        security_clusterrolebindings.stdout
+        | from_json
+        if security_clusterrolebindings.rc == 0
+        else {'items': []}
+      }}
+    security_rolebindings_data: >-
+      {{
+        security_rolebindings.stdout
+        | from_json
+        if security_rolebindings.rc == 0
+        else {'items': []}
+      }}
+    security_serviceaccounts_data: >-
+      {{
+        security_serviceaccounts.stdout
+        | from_json
+        if security_serviceaccounts.rc == 0
+        else {'items': []}
+      }}
+
+- name: Detectar bindings cluster-admin
+  ansible.builtin.set_fact:
+    security_cluster_admin_bindings: >-
+      {{
+        security_clusterrolebindings_data.items
+        | selectattr('roleRef.name', 'defined')
+        | selectattr('roleRef.name', 'equalto', 'cluster-admin')
+        | map(attribute='metadata.name')
+        | list
+      }}
+
+- name: Detectar sujetos anonymous y unauthenticated
+  ansible.builtin.set_fact:
+    security_anonymous_bindings: >-
+      {%- set found = [] -%}
+      {%- for binding in security_clusterrolebindings_data.items -%}
+      {%-   for subject in binding.subjects | default([]) -%}
+      {%-     if subject.name | default('') == 'system:anonymous' -%}
+      {%-       set _ = found.append(binding.metadata.name) -%}
+      {%-     endif -%}
+      {%-   endfor -%}
+      {%- endfor -%}
+      {{ found | unique | list }}
+
+    security_unauthenticated_bindings: >-
+      {%- set found = [] -%}
+      {%- for binding in security_clusterrolebindings_data.items -%}
+      {%-   for subject in binding.subjects | default([]) -%}
+      {%-     if subject.name | default('') == 'system:unauthenticated' -%}
+      {%-       set _ = found.append(binding.metadata.name) -%}
+      {%-     endif -%}
+      {%-   endfor -%}
+      {%- endfor -%}
+      {{ found | unique | list }}
+
+- name: Detectar ServiceAccounts con cluster-admin
+  ansible.builtin.set_fact:
+    security_privileged_serviceaccounts: >-
+      {%- set found = [] -%}
+      {%- for binding in security_clusterrolebindings_data.items -%}
+      {%-   if binding.roleRef.name | default('') == 'cluster-admin' -%}
+      {%-     for subject in binding.subjects | default([]) -%}
+      {%-       if subject.kind | default('') == 'ServiceAccount' -%}
+      {%-         set _ = found.append(
+                (subject.namespace | default('unknown'))
+                ~ '/'
+                ~ subject.name
+              ) -%}
+      {%-       endif -%}
+      {%-     endfor -%}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ found | unique | list }}
+
+- name: Evaluar postura de identidad
+  ansible.builtin.set_fact:
+    security_identity_checks:
+      cluster_admin:
+        status: >-
+          {{
+            'WARN'
+            if security_cluster_admin_bindings | length > 0
+            else 'PASS'
+          }}
+        detail: >-
+          {{ security_cluster_admin_bindings | length }}
+          cluster-admin bindings detected
+
+      anonymous:
+        status: >-
+          {{
+            'FAIL'
+            if security_anonymous_bindings | length > 0
+            else 'PASS'
+          }}
+        detail: >-
+          {{ security_anonymous_bindings | length }}
+          anonymous bindings detected
+
+      unauthenticated:
+        status: >-
+          {{
+            'FAIL'
+            if security_unauthenticated_bindings | length > 0
+            else 'PASS'
+          }}
+        detail: >-
+          {{ security_unauthenticated_bindings | length }}
+          unauthenticated bindings detected
+
+      privileged_serviceaccounts:
+        status: >-
+          {{
+            'WARN'
+            if security_privileged_serviceaccounts | length > 0
+            else 'PASS'
+          }}
+        detail: >-
+          {{ security_privileged_serviceaccounts | length }}
+          ServiceAccounts bound to cluster-admin

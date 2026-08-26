@@ -1,0 +1,112 @@
+---
+- name: Construir controles Zero Trust evaluados
+  ansible.builtin.set_fact:
+    security_posture_controls:
+      - category: "Host security"
+        checks:
+          - "{{ security_host_posture }}"
+
+      - category: "Identity & access"
+        checks:
+          - "{{ security_platform_checks.rbac_visibility.status }}"
+          - "{{ security_identity_checks.cluster_admin.status }}"
+          - "{{ security_identity_checks.anonymous.status }}"
+          - "{{ security_identity_checks.unauthenticated.status }}"
+          - "{{ security_identity_checks.privileged_serviceaccounts.status }}"
+
+      - category: "Network segmentation"
+        checks:
+          - "{{ security_platform_checks.network_policy.status }}"
+          - "{{ security_network_checks.coverage.status }}"
+          - "{{ security_network_checks.unprotected.status }}"
+          - "{{ security_default_deny_checks.ingress.status }}"
+          - "{{ security_default_deny_checks.egress.status }}"
+
+      - category: "Admission control"
+        checks:
+          - "{{ security_admission_checks.pod_security.status }}"
+
+      - category: "Workload security"
+        checks:
+          - "{{ security_workload_checks.privileged.status }}"
+          - "{{ security_workload_checks.host_network.status }}"
+          - "{{ security_workload_checks.host_pid.status }}"
+          - "{{ security_workload_checks.host_ipc.status }}"
+          - "{{ security_workload_checks.default_serviceaccount.status }}"
+
+      - category: "Exposure surface"
+        checks:
+          - "{{ security_exposure_checks.nodeport.status }}"
+          - "{{ security_exposure_checks.loadbalancer.status }}"
+          - "{{ security_exposure_checks.external_ips.status }}"
+
+      - category: "Audit"
+        checks:
+          - "{{ security_audit_checks.api_audit.status }}"
+
+      - category: "Data protection"
+        checks:
+          - "{{ security_platform_checks.secrets_encryption.status }}"
+
+- name: Calcular resumen Zero Trust
+  ansible.builtin.set_fact:
+    security_posture_pass: >-
+      {{
+        security_posture_controls
+        | map(attribute='checks')
+        | flatten
+        | select('equalto', 'PASS')
+        | list
+        | length
+      }}
+    security_posture_warn: >-
+      {{
+        security_posture_controls
+        | map(attribute='checks')
+        | flatten
+        | select('equalto', 'WARN')
+        | list
+        | length
+      }}
+    security_posture_fail: >-
+      {{
+        security_posture_controls
+        | map(attribute='checks')
+        | flatten
+        | select('equalto', 'FAIL')
+        | list
+        | length
+      }}
+
+- name: Evaluar categorías Zero Trust
+  ansible.builtin.set_fact:
+    security_posture_categories: >-
+      {%- set result = [] -%}
+      {%- for category in security_posture_controls -%}
+      {%-   if 'FAIL' in category.checks -%}
+      {%-     set state = 'FAIL' -%}
+      {%-   elif 'WARN' in category.checks -%}
+      {%-     set state = 'WARN' -%}
+      {%-   else -%}
+      {%-     set state = 'PASS' -%}
+      {%-   endif -%}
+      {%-   set _ = result.append({
+              'category': category.category,
+              'status': state
+            }) -%}
+      {%- endfor -%}
+      {{ result }}
+
+- name: Calcular postura Zero Trust global
+  ansible.builtin.set_fact:
+    security_posture_result: >-
+      {{
+        'ACTION REQUIRED'
+        if security_posture_fail | int > 0
+        else
+        (
+          'REVIEW REQUIRED'
+          if security_posture_warn | int > 0
+          else 'CONSISTENT'
+        )
+      }}

@@ -1,0 +1,85 @@
+---
+- name: Mostrar postura de seguridad de plataforma
+  ansible.builtin.debug:
+    msg:
+      - "============================================================"
+      - "ZERO TRUST PLATFORM SECURITY"
+      - "============================================================"
+      - "Environment       {{ environment_name }}"
+      - "Cluster           {{ cluster_name }}"
+      - ""
+      - "Identity / RBAC"
+      - "---------------"
+      - "RBAC visibility    {{ security_platform_checks.rbac_visibility.status }}  {{ security_platform_checks.rbac_visibility.detail }}"
+      - "cluster-admin      {{ security_identity_checks.cluster_admin.status }}  {{ security_identity_checks.cluster_admin.detail }}"
+      - "anonymous          {{ security_identity_checks.anonymous.status }}  {{ security_identity_checks.anonymous.detail }}"
+      - "unauthenticated    {{ security_identity_checks.unauthenticated.status }}  {{ security_identity_checks.unauthenticated.detail }}"
+      - "privileged SA      {{ security_identity_checks.privileged_serviceaccounts.status }}  {{ security_identity_checks.privileged_serviceaccounts.detail }}"
+      - ""
+      - "Network segmentation"
+      - "--------------------"
+      - "NetworkPolicies    {{ security_platform_checks.network_policy.status }}  {{ security_platform_checks.network_policy.detail }}"
+      - "Coverage           {{ security_network_checks.coverage.status }}  {{ security_network_checks.coverage.detail }}"
+      - "Unprotected        {{ security_network_checks.unprotected.status }}  {{ security_network_checks.unprotected.detail }}"
+      - "Default deny IN    {{ security_default_deny_checks.ingress.status }}  {{ security_default_deny_checks.ingress.detail }}"
+      - "Default deny OUT   {{ security_default_deny_checks.egress.status }}  {{ security_default_deny_checks.egress.detail }}"
+      - ""
+      - "Admission control"
+      - "-----------------"
+      - "Pod Security       {{ security_admission_checks.pod_security.status }}  {{ security_admission_checks.pod_security.detail }}"
+      - ""
+      - "Workload security"
+      - "-----------------"
+      - "Privileged         {{ security_workload_checks.privileged.status }}  {{ security_workload_checks.privileged.detail }}"
+      - "hostNetwork        {{ security_workload_checks.host_network.status }}  {{ security_workload_checks.host_network.detail }}"
+      - "hostPID            {{ security_workload_checks.host_pid.status }}  {{ security_workload_checks.host_pid.detail }}"
+      - "hostIPC            {{ security_workload_checks.host_ipc.status }}  {{ security_workload_checks.host_ipc.detail }}"
+      - "Default SA         {{ security_workload_checks.default_serviceaccount.status }}  {{ security_workload_checks.default_serviceaccount.detail }}"
+      - ""
+      - "Exposure surface"
+      - "----------------"
+      - "NodePort           {{ security_exposure_checks.nodeport.status }}  {{ security_exposure_checks.nodeport.detail }}"
+      - "LoadBalancer       {{ security_exposure_checks.loadbalancer.status }}  {{ security_exposure_checks.loadbalancer.detail }}"
+      - "External IPs       {{ security_exposure_checks.external_ips.status }}  {{ security_exposure_checks.external_ips.detail }}"
+      - ""
+      - "Audit"
+      - "-----"
+      - "API audit          {{ security_audit_checks.api_audit.status }}  {{ security_audit_checks.api_audit.detail }}"
+      - ""
+      - "Data protection"
+      - "---------------"
+      - "Secrets encryption {{ security_platform_checks.secrets_encryption.status }}  {{ security_platform_checks.secrets_encryption.detail }}"
+      - ""
+      - "Zero Trust posture"
+      - "------------------"
+      - "Host security           {{ (security_posture_categories | selectattr('category', 'equalto', 'Host security') | first).status }}"
+      - "Identity & access       {{ (security_posture_categories | selectattr('category', 'equalto', 'Identity & access') | first).status }}"
+      - "Network segmentation   {{ (security_posture_categories | selectattr('category', 'equalto', 'Network segmentation') | first).status }}"
+      - "Admission control       {{ (security_posture_categories | selectattr('category', 'equalto', 'Admission control') | first).status }}"
+      - "Workload security       {{ (security_posture_categories | selectattr('category', 'equalto', 'Workload security') | first).status }}"
+      - "Exposure surface        {{ (security_posture_categories | selectattr('category', 'equalto', 'Exposure surface') | first).status }}"
+      - "Audit                   {{ (security_posture_categories | selectattr('category', 'equalto', 'Audit') | first).status }}"
+      - "Data protection         {{ (security_posture_categories | selectattr('category', 'equalto', 'Data protection') | first).status }}"
+      - ""
+      - "Assessment summary"
+      - "------------------"
+      - "PASS                    {{ security_posture_pass }}"
+      - "WARN                    {{ security_posture_warn }}"
+      - "FAIL                    {{ security_posture_fail }}"
+      - ""
+      - "POSTURE                 {{ security_posture_result }}"
+      - "============================================================"
+
+- name: Mostrar postura resumida por host
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.host }}
+      ssh-root={{ item.ssh_root_login }}
+      ssh-password={{ item.ssh_password_authentication }}
+      firewall={{ item.firewall }}
+      mac={{ item.mandatory_access_control }}
+      rke2-config={{ item.rke2_config_permissions }}
+      kubeconfig={{ item.kubeconfig_permissions }}
+  loop: "{{ security_host_assessments }}"
+  loop_control:
+    label: "{{ item.host }}"

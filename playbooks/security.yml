@@ -1,0 +1,23 @@
+---
+- name: Auditar seguridad de nodos RKE2
+  hosts: rke2_cluster
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Recoger controles de seguridad del nodo
+      ansible.builtin.import_role:
+        name: security
+        tasks_from: node
+
+- name: Auditar seguridad de plataforma Kubernetes
+  hosts: rke2_servers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Evaluar seguridad desde el bootstrap server
+      ansible.builtin.import_role:
+        name: security
+        tasks_from: platform
+      when: rke2_first_server | default(false) | bool

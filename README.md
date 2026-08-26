@@ -199,6 +199,50 @@ Cada ejecución conserva una evidencia local en:
 artifacts/status/<environment>/
 ```
 
+### Evaluación de seguridad y postura Zero Trust
+
+Evaluar la postura de seguridad de una plataforma desplegada:
+
+```bash
+./rke2-deploy security ENVIRONMENT
+```
+
+`security` es una operación de solo lectura. No modifica la plataforma y no
+requiere Ansible Vault.
+
+La evaluación combina controles de host y de Kubernetes/RKE2:
+
+- configuración SSH y autenticación;
+- firewall del host;
+- SELinux o AppArmor;
+- permisos de configuración RKE2 y kubeconfig;
+- identidad y RBAC;
+- exposición de cuentas y privilegios;
+- cobertura de NetworkPolicy y políticas default-deny;
+- Pod Security Admission;
+- workloads privilegiados y uso de namespaces del host;
+- exposición mediante NodePort, LoadBalancer y externalIPs;
+- audit logging;
+- cifrado de Secrets en reposo;
+- hardening declarado de RKE2.
+
+Los controles se agrupan en categorías de postura Zero Trust y producen uno
+de los siguientes resultados globales:
+
+- `CONSISTENT`: no se detectan desviaciones relevantes;
+- `REVIEW REQUIRED`: existen controles que requieren revisión;
+- `ACTION REQUIRED`: se detectan controles fallidos.
+
+Cada ejecución conserva una evidencia local en:
+
+```text
+artifacts/security/<environment>/
+```
+
+El informe representa el estado observado en el momento de la ejecución.
+No sustituye una auditoría de seguridad formal ni aplica remediaciones
+automáticas.
+
 ### Seguridad de configuración
 
 Los entornos reales se generan localmente dentro de:

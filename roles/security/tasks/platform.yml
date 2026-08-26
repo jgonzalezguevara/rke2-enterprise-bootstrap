@@ -1,0 +1,186 @@
+---
+- name: Obtener namespaces
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/kubectl
+      --kubeconfig /etc/rancher/rke2/rke2.yaml
+      get namespaces
+      -o json
+  register: security_namespaces
+  changed_when: false
+  failed_when: false
+
+- name: Obtener ClusterRoleBindings
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/kubectl
+      --kubeconfig /etc/rancher/rke2/rke2.yaml
+      get clusterrolebindings
+      -o json
+  register: security_clusterrolebindings
+  changed_when: false
+  failed_when: false
+
+- name: Obtener RoleBindings
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/kubectl
+      --kubeconfig /etc/rancher/rke2/rke2.yaml
+      get rolebindings
+      --all-namespaces
+      -o json
+  register: security_rolebindings
+  changed_when: false
+  failed_when: false
+
+- name: Obtener ServiceAccounts
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/kubectl
+      --kubeconfig /etc/rancher/rke2/rke2.yaml
+      get serviceaccounts
+      --all-namespaces
+      -o json
+  register: security_serviceaccounts
+  changed_when: false
+  failed_when: false
+
+- name: Obtener Pods
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/kubectl
+      --kubeconfig /etc/rancher/rke2/rke2.yaml
+      get pods
+      --all-namespaces
+      -o json
+  register: security_pods
+  changed_when: false
+  failed_when: false
+
+- name: Obtener Services
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/kubectl
+      --kubeconfig /etc/rancher/rke2/rke2.yaml
+      get services
+      --all-namespaces
+      -o json
+  register: security_services
+  changed_when: false
+  failed_when: false
+
+- name: Obtener NetworkPolicies
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/kubectl
+      --kubeconfig /etc/rancher/rke2/rke2.yaml
+      get networkpolicies
+      --all-namespaces
+      -o json
+  register: security_networkpolicies
+  changed_when: false
+  failed_when: false
+
+- name: Comprobar configuración RKE2 server
+  ansible.builtin.stat:
+    path: /etc/rancher/rke2/config.yaml
+  register: security_rke2_server_config_file
+
+- name: Obtener configuración efectiva RKE2 server
+  ansible.builtin.slurp:
+    src: /etc/rancher/rke2/config.yaml
+  register: security_rke2_server_config
+  when: security_rke2_server_config_file.stat.exists
+
+- name: Decodificar configuración RKE2
+  ansible.builtin.set_fact:
+    security_rke2_config_text: >-
+      {{
+        security_rke2_server_config.content
+        | default('')
+        | b64decode
+        if security_rke2_server_config_file.stat.exists
+        else ''
+      }}
+
+- name: Evaluar hardening declarado RKE2
+  ansible.builtin.set_fact:
+    security_platform_checks:
+      secrets_encryption:
+        status: >-
+          {{
+            'PASS'
+            if 'secrets-encryption: true' in security_rke2_config_text
+            else 'WARN'
+          }}
+        detail: >-
+          {{
+            'Kubernetes secrets encryption declared'
+            if 'secrets-encryption: true' in security_rke2_config_text
+            else 'secrets encryption not explicitly declared'
+          }}
+
+      network_policy:
+        status: >-
+          {{
+            'PASS'
+            if (
+              security_networkpolicies.rc == 0
+              and
+              (
+                security_networkpolicies.stdout
+                | from_json
+              ).items | length > 0
+            )
+            else 'WARN'
+          }}
+        detail: >-
+          {{
+            (
+              security_networkpolicies.stdout
+              | from_json
+            ).items | length
+            if security_networkpolicies.rc == 0
+            else 0
+          }} NetworkPolicies detected
+
+      rbac_visibility:
+        status: >-
+          {{
+            'PASS'
+            if security_clusterrolebindings.rc == 0
+            else 'FAIL'
+          }}
+        detail: >-
+          {{
+            'RBAC state available for audit'
+            if security_clusterrolebindings.rc == 0
+            else 'unable to inspect ClusterRoleBindings'
+          }}
+
+- name: Evaluar identidad y RBAC
+  ansible.builtin.import_tasks: identity.yml
+
+- name: Evaluar segmentación de red
+  ansible.builtin.import_tasks: network.yml
+
+- name: Evaluar controles de admisión
+  ansible.builtin.import_tasks: admission.yml
+
+- name: Evaluar seguridad de workloads
+  ansible.builtin.import_tasks: workloads.yml
+
+- name: Evaluar superficie de exposición
+  ansible.builtin.import_tasks: exposure.yml
+
+- name: Evaluar audit logging
+  ansible.builtin.import_tasks: audit.yml
+
+- name: Evaluar postura agregada de hosts
+  ansible.builtin.import_tasks: hosts.yml
+
+- name: Calcular postura Zero Trust
+  ansible.builtin.import_tasks: posture.yml
+
+- name: Generar informe de seguridad de plataforma
+  ansible.builtin.import_tasks: platform-report.yml

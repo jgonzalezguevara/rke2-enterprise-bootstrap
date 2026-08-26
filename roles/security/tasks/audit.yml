@@ -1,0 +1,24 @@
+---
+- name: Evaluar configuración de auditoría Kubernetes
+  ansible.builtin.set_fact:
+    security_audit_policy_declared: >-
+      {{
+        'audit-policy-file' in security_rke2_config_text
+      }}
+
+- name: Evaluar audit logging
+  ansible.builtin.set_fact:
+    security_audit_checks:
+      api_audit:
+        status: >-
+          {{
+            'PASS'
+            if security_audit_policy_declared
+            else 'WARN'
+          }}
+        detail: >-
+          {{
+            'Kubernetes API audit policy declared'
+            if security_audit_policy_declared
+            else 'Kubernetes API audit policy not explicitly declared'
+          }}

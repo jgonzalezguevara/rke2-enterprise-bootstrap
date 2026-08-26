@@ -1,0 +1,175 @@
+---
+- name: Interpretar namespaces y NetworkPolicies
+  ansible.builtin.set_fact:
+    security_namespaces_data: >-
+      {{
+        security_namespaces.stdout
+        | from_json
+        if security_namespaces.rc == 0
+        else {'items': []}
+      }}
+    security_networkpolicies_data: >-
+      {{
+        security_networkpolicies.stdout
+        | from_json
+        if security_networkpolicies.rc == 0
+        else {'items': []}
+      }}
+
+- name: Construir cobertura NetworkPolicy
+  ansible.builtin.set_fact:
+    security_application_namespaces: >-
+      {%- set found = [] -%}
+      {%- for ns in security_namespaces_data.items -%}
+      {%-   set name = ns.metadata.name -%}
+      {%-   if not (
+              name == 'default'
+              or name == 'kube-system'
+              or name == 'kube-public'
+              or name == 'kube-node-lease'
+              or name == 'cattle-system'
+              or name == 'cert-manager'
+            ) -%}
+      {%-     set _ = found.append(name) -%}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ found }}
+
+    security_networkpolicy_namespaces: >-
+      {{
+        security_networkpolicies_data.items
+        | map(attribute='metadata.namespace')
+        | unique
+        | list
+      }}
+
+- name: Detectar namespaces sin NetworkPolicy
+  ansible.builtin.set_fact:
+    security_unprotected_namespaces: >-
+      {{
+        security_application_namespaces
+        | difference(security_networkpolicy_namespaces)
+        | list
+      }}
+
+- name: Evaluar segmentación de red
+  ansible.builtin.set_fact:
+    security_network_checks:
+      coverage:
+        status: >-
+          {{
+            'PASS'
+            if security_unprotected_namespaces | length == 0
+            else 'WARN'
+          }}
+        detail: >-
+          {{
+            security_application_namespaces | length
+            -
+            security_unprotected_namespaces | length
+          }}/{{ security_application_namespaces | length }}
+          application namespaces covered
+
+      unprotected:
+        status: >-
+          {{
+            'PASS'
+            if security_unprotected_namespaces | length == 0
+            else 'WARN'
+          }}
+        detail: >-
+          {{
+            security_unprotected_namespaces
+            | join(', ')
+            if security_unprotected_namespaces | length > 0
+            else 'none'
+          }}
+
+- name: Detectar namespaces con default-deny ingress
+  ansible.builtin.set_fact:
+    security_default_deny_ingress_namespaces: >-
+      {%- set found = [] -%}
+      {%- for policy in security_networkpolicies_data.items -%}
+      {%-   set selector = policy.spec.podSelector | default({}) -%}
+      {%-   set match_labels = selector.matchLabels | default({}) -%}
+      {%-   set expressions = selector.matchExpressions | default([]) -%}
+      {%-   set policy_types = policy.spec.policyTypes | default([]) -%}
+      {%-   if (
+              match_labels | length == 0
+              and expressions | length == 0
+              and 'Ingress' in policy_types
+              and policy.spec.ingress | default([]) | length == 0
+            ) -%}
+      {%-     set _ = found.append(policy.metadata.namespace) -%}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ found | unique | list }}
+
+- name: Detectar namespaces con default-deny egress
+  ansible.builtin.set_fact:
+    security_default_deny_egress_namespaces: >-
+      {%- set found = [] -%}
+      {%- for policy in security_networkpolicies_data.items -%}
+      {%-   set selector = policy.spec.podSelector | default({}) -%}
+      {%-   set match_labels = selector.matchLabels | default({}) -%}
+      {%-   set expressions = selector.matchExpressions | default([]) -%}
+      {%-   set policy_types = policy.spec.policyTypes | default([]) -%}
+      {%-   if (
+              match_labels | length == 0
+              and expressions | length == 0
+              and 'Egress' in policy_types
+              and policy.spec.egress | default([]) | length == 0
+            ) -%}
+      {%-     set _ = found.append(policy.metadata.namespace) -%}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ found | unique | list }}
+
+- name: Calcular cobertura default-deny
+  ansible.builtin.set_fact:
+    security_missing_default_deny_ingress: >-
+      {{
+        security_application_namespaces
+        | difference(security_default_deny_ingress_namespaces)
+        | list
+      }}
+
+    security_missing_default_deny_egress: >-
+      {{
+        security_application_namespaces
+        | difference(security_default_deny_egress_namespaces)
+        | list
+      }}
+
+- name: Evaluar default-deny
+  ansible.builtin.set_fact:
+    security_default_deny_checks:
+      ingress:
+        status: >-
+          {{
+            'PASS'
+            if security_missing_default_deny_ingress | length == 0
+            else 'WARN'
+          }}
+        detail: >-
+          {{
+            security_application_namespaces | length
+            -
+            security_missing_default_deny_ingress | length
+          }}/{{ security_application_namespaces | length }}
+          application namespaces protected
+
+      egress:
+        status: >-
+          {{
+            'PASS'
+            if security_missing_default_deny_egress | length == 0
+            else 'WARN'
+          }}
+        detail: >-
+          {{
+            security_application_namespaces | length
+            -
+            security_missing_default_deny_egress | length
+          }}/{{ security_application_namespaces | length }}
+          application namespaces protected
