@@ -55,6 +55,12 @@ RANCHER
         |
         v
 VALIDATION
+        |
+        +-------------------+
+        |                   |
+        v                   v
+     STATUS              SECURITY
+  drift detection    Zero Trust posture
 ```
 
 ## Características actuales
@@ -330,6 +336,21 @@ Las evidencias se almacenan localmente en:
 artifacts/validation/<environment>/
 ```
 
+Consultar el estado observado y detectar drift:
+
+```bash
+./rke2-deploy status ENVIRONMENT
+```
+
+Ejecutar la evaluación de seguridad y postura Zero Trust:
+
+```bash
+./rke2-deploy security ENVIRONMENT
+```
+
+Ambas operaciones son de solo lectura y generan evidencias locales sin
+modificar la plataforma.
+
 Listar entornos:
 
 ```bash
@@ -373,8 +394,14 @@ rke2-enterprise-bootstrap/
 |   |-- preflight/
 |   |-- rancher/
 |   |-- rke2/
+|   |-- security/
+|   |-- status/
 |   `-- validation/
 |-- artifacts/
+|   |-- kubeconfig/
+|   |-- security/
+|   |-- status/
+|   `-- validation/
 |-- rke2-deploy
 |-- site.yml
 |-- requirements.yml
@@ -383,26 +410,54 @@ rke2-enterprise-bootstrap/
 
 ## Roadmap
 
-Capacidades previstas:
+La versión 1.0 cubre el bootstrap inicial, validación, convergencia,
+observación del estado y evaluación de seguridad de una plataforma RKE2.
 
-- validación avanzada de networking y puertos;
+Las siguientes capacidades quedan deliberadamente fuera del alcance de v1.0
+y podrán evolucionar en versiones posteriores:
+
 - instalación air-gap;
-- private registries;
-- backup y restore de etcd;
-- upgrades controlados de RKE2;
-- upgrades de Rancher;
-- hardening;
-- almacenamiento;
-- observabilidad;
-- reporting;
-- validaciones Day-2;
-- GitOps y Fleet.
+- integración con private registries;
+- backup y restore automatizado de etcd;
+- procedimientos Day-2 para upgrades controlados de RKE2;
+- procedimientos Day-2 para upgrades de Rancher;
+- integración con almacenamiento externo;
+- integración con plataformas de observabilidad;
+- GitOps y Fleet;
+- políticas de hardening específicas de cada organización.
+
+El proyecto evita realizar upgrades implícitos durante el bootstrap. Los
+cambios de versión requieren procedimientos Day-2 explícitos.
 
 ## Estado
 
-PoC funcional en desarrollo activo.
+**Versión estable: 1.0.0**
 
-No debe utilizarse directamente en producción sin revisar previamente requisitos, versiones soportadas, networking, seguridad, almacenamiento y políticas específicas del entorno.
+RKE2 Enterprise Bootstrap ha alcanzado el alcance funcional definido para su
+primera versión estable.
+
+La versión 1.0 proporciona:
+
+- generación y validación de entornos;
+- topologías single-node y HA;
+- preflight de infraestructura y networking;
+- preparación declarativa del sistema operativo;
+- despliegue RKE2 Server y Agent;
+- instalación de cert-manager y Rancher;
+- convergencia e idempotencia por diseño;
+- protección frente a upgrades implícitos;
+- validación funcional posterior al despliegue;
+- comprobación de etcd;
+- estado observado y detección de drift;
+- evaluación de seguridad y postura Zero Trust;
+- generación local de evidencias operativas.
+
+El proyecto está preparado como base reutilizable para laboratorios,
+integración y automatización de plataformas RKE2.
+
+Antes de utilizarlo en producción deben revisarse las versiones soportadas,
+networking, almacenamiento, seguridad, políticas corporativas, recuperación
+ante desastres y requisitos específicos del entorno.
 
 ## Autor
 
